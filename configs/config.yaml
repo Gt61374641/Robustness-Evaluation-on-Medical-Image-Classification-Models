@@ -1,0 +1,69 @@
+seed: 42
+
+data:
+  dataset: "chest_xray_pneumonia"   # isic2020 / chest_xray_pneumonia / oct2017
+  data_dir: "./data"
+  img_size: 224
+  batch_size: 16
+  num_workers: 4
+
+model:
+  name: "densenet121"
+  pretrained: true
+  num_classes: null               # auto-set based on dataset
+
+train:
+  epochs: 10
+  lr: 0.0001
+  weight_decay: 1.0e-4
+  scheduler: "cosine"
+  amp: true                    # mixed precision training
+  accumulation_steps: 1        # gradient accumulation steps (increase if OOM)
+  class_balance:
+    loss: "none"               # none / weighted_cross_entropy
+    sampler: "none"            # none / balanced_sampler
+
+# --- Main experiment attacks (must-do) ---
+attacks_main:
+  - name: "FGSM"
+    eps: [0.003921, 0.007843, 0.015686, 0.031372, 0.062745]  # 1/255 ~ 16/255
+  - name: "PGD"
+    eps: [0.003921, 0.007843, 0.015686, 0.031372, 0.062745]
+    max_iter: 20
+  - name: "DeepFool"
+    max_iter: 50
+  # - name: "CW"               # VERY slow (~1h+ at 300 samples); run separately via a second pass
+  #   confidence: 0
+  #   max_iter: 100
+
+# --- Extended attacks (bonus, after main experiments) ---
+attacks_extended:
+  - name: "AutoPGD"
+    eps: [0.015686, 0.031372]
+  - name: "SquareAttack"
+    eps: [0.015686, 0.031372]
+    max_queries: 1000            # reduced from 5000: ~80 min/eps on 5070 Laptop, still a valid budget
+
+# --- Main defense: adversarial training ---
+# NOTE: AT needs ~3x the memory of normal training (clean + adversarial forward/backward).
+# On 8GB GPUs with the high-resolution datasets at 224, keep batch_size small (8-16). Lower further if OOM.
+defenses_main:
+  - name: "PGD-AT"
+    eps: 0.031372               # 8/255
+    nb_epochs: 20
+    batch_size: 16
+  - name: "TRADES"
+    eps: 0.031372
+    nb_epochs: 20
+    beta: 6.0
+    batch_size: 8
+    max_iter: 7
+
+# --- Baseline defense: preprocessors (supplementary only, NOT main conclusions) ---
+defenses_baseline:
+  - name: "SpatialSmoothing"
+    window_size: 3
+  - name: "JpegCompression"
+    quality: 75
+  - name: "FeatureSqueezing"
+    bit_depth: 4

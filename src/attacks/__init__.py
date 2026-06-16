@@ -1,0 +1,1 @@
+from .attack_factory import create_attack, create_attacks_from_config

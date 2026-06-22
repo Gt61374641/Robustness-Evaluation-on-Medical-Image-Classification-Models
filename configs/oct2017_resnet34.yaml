@@ -8,6 +8,10 @@ data:
   img_size: 224
   batch_size: 32
   num_workers: 4
+  # OCT's ~83k train set is highly redundant; use a fixed stratified 20% (same
+  # subset for every model, seed-based) for ~4-5x faster training. Val/test stay
+  # full. Set to 1.0 to train on the entire OCT training set.
+  train_subsample_frac: 0.2
 
 model:
   name: "resnet34"

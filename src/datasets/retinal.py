@@ -13,7 +13,11 @@ from pathlib import Path
 
 from torch.utils.data import DataLoader, Subset
 
-from .chest_xray import ImageFolderDataset, _stratified_val_carve
+from .chest_xray import (
+    ImageFolderDataset,
+    _stratified_val_carve,
+    _stratified_subsample_indices,
+)
 from .transforms import get_transforms
 
 
@@ -49,6 +53,22 @@ def get_retinal_loaders(cfg: dict):
 
     val_frac = float(cfg["data"].get("val_frac", 0.1))
     train_idx, val_idx = _stratified_val_carve(train_full_aug.samples, seed, val_frac)
+
+    # Optional stratified train subsampling: OCT's ~83k training set is highly
+    # redundant, so a fixed fraction (same subset for every model, seed-based)
+    # cuts training time ~4-5x while keeping the comparison fair. Val/test stay
+    # full. Set data.train_subsample_frac < 1.0 to enable (default 1.0 = full).
+    subsample_frac = float(cfg["data"].get("train_subsample_frac", 1.0))
+    if subsample_frac < 1.0:
+        n_before = len(train_idx)
+        train_idx = _stratified_subsample_indices(
+            train_full_aug.samples, train_idx, subsample_frac, seed
+        )
+        counts = {}
+        for i in train_idx:
+            counts[train_full_aug.samples[i][1]] = counts.get(train_full_aug.samples[i][1], 0) + 1
+        print(f"[train subsample] frac={subsample_frac}: {n_before} -> {len(train_idx)} "
+              f"train samples, per-class {dict(sorted(counts.items()))}")
 
     train_ds = Subset(train_full_aug, train_idx)
     val_ds = Subset(train_full_eval, val_idx)

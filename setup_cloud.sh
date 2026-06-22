@@ -9,9 +9,24 @@
 # 12.x, then this script only adds the project libs (no torch reinstall).
 set -euo pipefail
 
+# NOTE on location: the instance runs in a CN datacentre, so all downloads below
+# use the instance's network, NOT your laptop's link — being in the UK does not
+# slow them. We only need to speed up the CN datacentre's access to GitHub /
+# HuggingFace / PyPI (international sites), which the mirrors below handle.
+
+# --- AutoDL academic acceleration: proxies GitHub/HuggingFace from CN datacentres.
+if [ -f /etc/network_turbo ]; then
+  echo "==> Enabling AutoDL academic acceleration (/etc/network_turbo)..."
+  source /etc/network_turbo
+fi
+
+# --- Fast pip mirror (Tsinghua) — installs from a domestic mirror, much faster.
+PIP_MIRROR="https://pypi.tuna.tsinghua.edu.cn/simple"
+
 # --- HuggingFace mirror: timm pretrained weights download fast from CN datacentres.
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 echo "==> HF_ENDPOINT=$HF_ENDPOINT"
+echo "==> pip mirror=$PIP_MIRROR"
 echo "==> python: $(python --version 2>&1) ($(command -v python))"
 
 # --- 1) PyTorch: reuse the base image's build; install only if missing. --------
@@ -21,12 +36,12 @@ else
   echo "==> torch missing -> installing torch+torchvision from PyPI (bundled CUDA)."
   echo "    If this mismatches the instance CUDA, recreate the instance from a"
   echo "    PyTorch base image instead of installing torch here."
-  pip install "torch>=2.0.0" "torchvision>=0.15.0"
+  pip install -i "$PIP_MIRROR" "torch>=2.0.0" "torchvision>=0.15.0"
 fi
 
 # --- 2) Project dependencies ---------------------------------------------------
 echo "==> Installing project requirements..."
-pip install -r requirements.txt
+pip install -i "$PIP_MIRROR" -r requirements.txt
 
 # --- 3) Sanity check -----------------------------------------------------------
 python - <<'PY'

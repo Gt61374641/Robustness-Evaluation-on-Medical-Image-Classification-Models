@@ -11,10 +11,9 @@ Expected directory structure:
 
 from pathlib import Path
 
-import torch
 from torch.utils.data import DataLoader, Subset
 
-from .chest_xray import ImageFolderDataset
+from .chest_xray import ImageFolderDataset, _stratified_val_carve
 from .transforms import get_transforms
 
 
@@ -48,11 +47,8 @@ def get_retinal_loaders(cfg: dict):
     train_full_eval = ImageFolderDataset(data_dir / "train", eval_transform)
     test_ds = ImageFolderDataset(data_dir / "test", eval_transform)
 
-    n = len(train_full_aug)
-    val_size = max(1, int(0.1 * n))
-    indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
-    val_idx = indices[:val_size]
-    train_idx = indices[val_size:]
+    val_frac = float(cfg["data"].get("val_frac", 0.1))
+    train_idx, val_idx = _stratified_val_carve(train_full_aug.samples, seed, val_frac)
 
     train_ds = Subset(train_full_aug, train_idx)
     val_ds = Subset(train_full_eval, val_idx)

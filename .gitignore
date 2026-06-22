@@ -22,3 +22,9 @@ build/
 *.log
 wandb/
 .vscode/
+
+# Pre-pivot ISIC/detection material (1.1 GB local-only archive)
+_archive/
+# Copyrighted reference paper — keep out of the public repo
+*.pdf
+*.npz

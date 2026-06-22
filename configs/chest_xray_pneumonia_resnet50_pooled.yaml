@@ -1,0 +1,36 @@
+# VERIFICATION-ONLY config: resnet50 on chest X-ray with a POOLED RANDOM split
+# (train/ + test/ merged, shuffled, re-split stratified). Mirrors the Rodriguez
+# et al. paper protocol to confirm the low official-split clean accuracy is a
+# train->test distribution shift, not a pipeline bug. NOT part of the main study.
+#
+# seed 142 keeps checkpoints/results separate from the official-split seed42/43/44
+# runs:  checkpoints/chest_xray_pneumonia_resnet50_seed142.pth
+#        results/chest_xray_pneumonia/resnet50/clean/seed142/
+seed: 142
+
+data:
+  dataset: "chest_xray_pneumonia"
+  data_dir: "./data"
+  img_size: 224
+  batch_size: 16
+  num_workers: 4
+  split: "pooled_random"   # official (default) | pooled_random
+  val_frac: 0.1
+  test_frac: 0.2
+
+model:
+  name: "resnet50"
+  pretrained: true
+  num_classes: null
+
+train:
+  epochs: 20
+  lr: 0.0001
+  weight_decay: 1.0e-4
+  scheduler: "cosine"
+  amp: true
+  amp_dtype: "float16"
+  accumulation_steps: 1
+  class_balance:
+    loss: "weighted_cross_entropy"
+    sampler: "none"

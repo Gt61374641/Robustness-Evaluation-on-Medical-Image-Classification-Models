@@ -326,7 +326,7 @@ def main() -> None:
     parser.add_argument("--results-dir", type=Path, default=Path("results"))
     parser.add_argument("--output-dir", type=Path, default=Path("figures") / "sci_defense")
     parser.add_argument("--dataset", default="chest_xray_pneumonia")
-    parser.add_argument("--model", default="densenet121")
+    parser.add_argument("--model", default="resnet50")
     parser.add_argument("--seed", default="seed42")
     args = parser.parse_args()
 

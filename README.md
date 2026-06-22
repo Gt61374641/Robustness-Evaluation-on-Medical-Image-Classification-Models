@@ -1,33 +1,60 @@
-# Medical Image Adversarial Robustness
+# Model Complexity and Adversarial Robustness in Medical Image Classification
 
-This repository contains the current DenseNet121-focused experimental pipeline
-for adversarial robustness evaluation on medical image classification tasks.
+Experimental framework for studying how **model complexity** affects **adversarial
+robustness** in medical image classification, and how **adversarial training**
+changes that relationship. The design follows Rodriguez et al. 2022 (BMC,
+*On the role of deep learning model complexity in adversarial robustness for
+medical images*): one architecture family at several complexities, swept across a
+range of attack budgets, then adversarially trained and re-evaluated.
 
-## Current Scope
+## Scope
 
-- Model: DenseNet121.
-- Primary dataset: ISIC 2020.
-- Attacks: FGSM, PGD, DeepFool, AutoPGD, SquareAttack.
-- Defenses: PGD-AT and TRADES.
-- Outputs: clean metrics, robustness metrics, SCI-style figures, and paper tables.
+- **Models** — ResNet complexity ladder: `resnet18, resnet34, resnet50, resnet101,
+  resnet152` (~11.7M → ~60.2M params), ImageNet-pretrained fine-tuning.
+- **Datasets** — `chest_xray_pneumonia` (binary, **primary**), `oct2017` (4-class),
+  `malaria` (binary, color; NIH cell images, **patient-level split**).
+- **Attacks** — FGSM + PGD core eps-sweep `{1,2,4,8,16}/255` (stress `{32,64}/255`).
+- **Adversarial training** — PGD-AT (primary: resnet18/50/152, full training set),
+  TRADES as a second method; defended models evaluated with a **strong** protocol
+  (PGD-50 + 5 restarts + AutoAttack).
+- **Outputs** — clean metrics, robustness metrics (full + conditional robust
+  accuracy), complexity-vs-eps curves, complexity/AT tables, Grad-CAM.
 
-Large local artifacts are intentionally excluded from git:
+> **Research hypotheses (to test, not assume):** H1 — do lower-complexity models
+> show higher robustness? H2 — does adversarial training change the ranking?
 
-- `data/`
-- `checkpoints/`
-- `results/`
-- `figures/`
-- temporary pytest and Python cache directories
+Large local artifacts are git-excluded: `data/`, `checkpoints/`, `results/`,
+`figures/`, caches. Archived (pre-pivot) ISIC/detection material lives in `_archive/`.
 
-## Typical Commands
-
-Run from this directory.
+## Setup
 
 ```powershell
-python scripts/train.py --config configs/isic2020_densenet121.yaml
-python scripts/evaluate_clean.py --config configs/isic2020_densenet121.yaml --checkpoint checkpoints/isic2020_densenet121_seed42.pth
-python scripts/evaluate_robustness.py --config configs/isic2020_densenet121.yaml --checkpoint checkpoints/isic2020_densenet121_seed42.pth --max-samples 1024
+# inside the (medimg-robust) env
+python scripts/download_data.py --dataset chest_xray_pneumonia
+python scripts/download_data.py --dataset oct2017
+python scripts/download_data.py --dataset malaria
+python scripts/make_configs.py        # generate the 15 per-model configs
 ```
 
-Use `configs/isic2020_densenet121_balanced.yaml` for the next class-imbalance
-correction run.
+## Typical commands
+
+```powershell
+# one (dataset, model)
+python scripts/train.py --config configs/chest_xray_pneumonia_resnet18.yaml
+python scripts/evaluate_clean.py --config configs/chest_xray_pneumonia_resnet18.yaml --checkpoint checkpoints/chest_xray_pneumonia_resnet18_seed42.pth
+python scripts/evaluate_robustness.py --config configs/chest_xray_pneumonia_resnet18.yaml --checkpoint checkpoints/chest_xray_pneumonia_resnet18_seed42.pth --max-samples 1024
+
+# adversarial training (FULL training set; --max-samples limits only the attack-eval subset)
+python scripts/evaluate_defense.py --config configs/chest_xray_pneumonia_resnet50.yaml --defense PGD-AT --max-samples 1024
+
+# signature figures (after the ladder is evaluated)
+python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --seed seed42
+
+# or drive everything
+run_pipeline.bat chest_xray_pneumonia resnet18
+run_all_models.bat
+```
+
+See `../MEDICAL_ROBUSTNESS_PLAN.md` (project root) for the full plan, experiment
+matrix, and methodology (eps grid, robust-accuracy definitions, strong-attack
+evaluation protocol, fair-comparison subset).

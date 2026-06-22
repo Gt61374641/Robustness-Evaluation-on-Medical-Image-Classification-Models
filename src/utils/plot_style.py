@@ -99,6 +99,7 @@ ATTACK_COLORS = {
     "DeepFool":     PALETTE["violet"],
     "HopSkipJump":  PALETTE["teal"],
     "CW":           PALETTE["gold"],
+    "UAP":          PALETTE["magenta"],   # white-box, image-agnostic (universal)
 }
 
 # Defense methods. Standard model is neutral; main defenses (PGD-AT / TRADES)

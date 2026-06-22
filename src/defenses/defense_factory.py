@@ -34,11 +34,15 @@ def create_defense_trainer(classifier: PyTorchClassifier, defense_cfg: dict):
     name = defense_cfg["name"]
 
     if name == "PGD-AT":
+        # Inner PGD is intentionally cheap (max_iter 7-10) for training speed;
+        # the DEFENDED model is later evaluated with a much stronger protocol.
         return AdversarialTrainerMadryPGD(
             classifier,
             nb_epochs=defense_cfg.get("nb_epochs", 20),
             eps=defense_cfg.get("eps", 8 / 255),
             eps_step=defense_cfg.get("eps_step", 2 / 255),
+            max_iter=defense_cfg.get("max_iter", 7),
+            batch_size=defense_cfg.get("batch_size", 16),
         )
     elif name == "TRADES":
         pgd_attack = ProjectedGradientDescent(

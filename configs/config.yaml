@@ -1,14 +1,14 @@
 seed: 42
 
 data:
-  dataset: "chest_xray_pneumonia"   # isic2020 / chest_xray_pneumonia / oct2017
+  dataset: "chest_xray_pneumonia"   # chest_xray_pneumonia / oct2017 / malaria
   data_dir: "./data"
   img_size: 224
   batch_size: 16
   num_workers: 4
 
 model:
-  name: "densenet121"
+  name: "resnet50"                # resnet18/34/50/101/152
   pretrained: true
   num_classes: null               # auto-set based on dataset
 

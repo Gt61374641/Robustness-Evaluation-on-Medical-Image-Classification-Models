@@ -1,9 +1,9 @@
 """Unified data download script for the three project datasets.
 
 Usage:
-    python scripts/download_data.py --dataset isic2020              # Kaggle (ISIC 2020)
     python scripts/download_data.py --dataset chest_xray_pneumonia  # Kaggle (Kermany Pneumonia)
     python scripts/download_data.py --dataset oct2017               # Kaggle (Kermany OCT2017)
+    python scripts/download_data.py --dataset malaria               # Kaggle (NIH Malaria Cell Images)
 
 All three are pulled from Kaggle. You will need:
     1. pip install kaggle
@@ -70,13 +70,11 @@ KAGGLE_DATASETS = {
         "subdir": "oct2017",
         "competition": False,
     },
-    "isic2020": {
-        # ISIC 2020 is hosted as a Kaggle competition (SIIM-ISIC Melanoma Classification).
-        # Accept the competition rules first at:
-        # https://www.kaggle.com/competitions/siim-isic-melanoma-classification/rules
-        "slug": "siim-isic-melanoma-classification",
-        "subdir": "isic2020",
-        "competition": True,
+    "malaria": {
+        # NIH Malaria Cell Images (Rajaraman et al.); extracts to cell_images/{Parasitized,Uninfected}.
+        "slug": "iarunava/cell-images-for-detecting-malaria",
+        "subdir": "malaria",
+        "competition": False,
     },
 }
 

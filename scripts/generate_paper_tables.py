@@ -149,7 +149,7 @@ def main() -> None:
     parser.add_argument("--figures-dir", type=Path, default=Path("figures"))
     parser.add_argument("--output-dir", type=Path, default=Path("figures") / "paper_tables")
     parser.add_argument("--dataset", default="chest_xray_pneumonia")
-    parser.add_argument("--model", default="densenet121")
+    parser.add_argument("--model", default="resnet50")
     args = parser.parse_args()
 
     clean_dir = args.figures_dir / "sci_clean" / args.dataset / args.model

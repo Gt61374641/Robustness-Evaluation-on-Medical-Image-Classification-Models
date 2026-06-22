@@ -30,8 +30,9 @@ from src.utils.logger import get_logger
 from src.datasets import get_dataloaders
 from src.models import create_model
 from src.models.model_factory import load_checkpoint
-from src.attacks import create_attacks_from_config
+from src.attacks import create_attacks_from_config, create_defense_eval_attacks
 from src.evaluation.metrics import evaluate_robustness
+from src.evaluation.subset import get_attack_subset
 
 
 def collect_test_data(loader, max_samples=None):
@@ -101,6 +102,7 @@ def _make_run_metadata(args, checkpoint_path, num_samples, clean_acc):
         "checkpoint": str(checkpoint),
         "checkpoint_mtime": checkpoint_mtime,
         "attacks_section": args.attacks_section,
+        "strong_pgd": bool(getattr(args, "strong_pgd", False)),
         "max_samples": args.max_samples,
         "num_samples": int(num_samples),
         "clean_accuracy": float(clean_acc),
@@ -112,10 +114,17 @@ def _can_resume(existing_results, args, checkpoint_path):
     meta = existing_results.get("_meta")
     if not isinstance(meta, dict):
         return False
+    # Invalidate the cache if the checkpoint was retrained (mtime changed): reusing
+    # old attack metrics against a new checkpoint silently mixes experiments.
+    checkpoint = Path(checkpoint_path)
+    current_mtime = (datetime.fromtimestamp(checkpoint.stat().st_mtime).isoformat()
+                     if checkpoint.exists() else None)
     return (
         meta.get("schema_version") == RESULT_SCHEMA_VERSION
-        and meta.get("checkpoint") == str(Path(checkpoint_path))
+        and meta.get("checkpoint") == str(checkpoint)
+        and meta.get("checkpoint_mtime") == current_mtime
         and meta.get("attacks_section") == args.attacks_section
+        and meta.get("strong_pgd", False) == bool(getattr(args, "strong_pgd", False))
         and meta.get("max_samples") == args.max_samples
     )
 
@@ -125,12 +134,20 @@ def main():
     parser.add_argument("--config", type=str, default="configs/config.yaml")
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--attacks-section", type=str, default="attacks_main",
-                        choices=["attacks_main", "attacks_extended"])
+                        choices=["attacks_main", "attacks_extended", "attacks_stress", "attacks_fine"])
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Limit test samples (useful for slow attacks like CW)")
+    parser.add_argument("--seed", type=int, default=None, help="Override config seed (for multi-seed runs)")
+    parser.add_argument("--strong-pgd", action="store_true",
+                        help="Re-check standard models with the SAME strong protocol as the AT "
+                             "defense eval (config 'defense_eval': PGD-50 + 5 restarts + matching "
+                             "eps grid/step). Makes standard-vs-AT strictly same-protocol and lets "
+                             "per-eps pred_distribution expose any large-eps class collapse.")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+    if args.seed is not None:
+        cfg["seed"] = args.seed
     seed = cfg.get("seed", 42)
     set_seed(seed)
 
@@ -169,10 +186,19 @@ def main():
         device_type="gpu" if device.type == "cuda" else "cpu",
     )
 
-    # Collect test data
+    # Collect FULL test data, then take a FIXED stratified subset when
+    # --max-samples is set. The subset is cached per dataset+seed+size so EVERY
+    # model and attack is evaluated on exactly the same images (fair comparison).
     logger.info("Collecting test data...")
-    x_test, y_test = collect_test_data(data["test"], max_samples=args.max_samples)
-    logger.info(f"Test samples: {len(x_test)}")
+    x_full, y_full = collect_test_data(data["test"], max_samples=None)
+    if args.max_samples is not None and args.max_samples < len(x_full):
+        subset_path = Path("results") / dataset_name / f"attack_subset_seed{seed}_n{args.max_samples}.json"
+        idx = get_attack_subset(y_full, args.max_samples, seed, subset_path)
+        x_test, y_test = x_full[idx], y_full[idx]
+        logger.info(f"Fixed stratified subset: {len(x_test)}/{len(x_full)} samples (cache {subset_path})")
+    else:
+        x_test, y_test = x_full, y_full
+        logger.info(f"Full test set: {len(x_test)} samples")
 
     # Clean predictions
     logger.info("Computing clean predictions...")
@@ -181,12 +207,22 @@ def main():
     logger.info(f"Clean accuracy: {clean_acc:.4f}")
 
     # Create attacks
-    logger.info(f"Creating attacks from [{args.attacks_section}]...")
-    attacks = create_attacks_from_config(classifier, cfg, section=args.attacks_section)
-    logger.info(f"Total attack configurations: {len(attacks)}")
+    if args.strong_pgd:
+        # Strong re-check using the EXACT same protocol as the AT (defense) eval —
+        # the 'defense_eval' section (PGD-50 + 5 restarts + matching eps grid/step).
+        # This makes standard-vs-AT a strictly same-protocol comparison.
+        attacks = create_defense_eval_attacks(classifier, cfg)
+        if not attacks:
+            parser.error("--strong-pgd requires a 'defense_eval' section in the config "
+                         "(it reuses the AT evaluation protocol for a fair comparison).")
+        logger.info(f"STRONG eval (same protocol as AT defense eval): {[a[0] for a in attacks]}")
+    else:
+        logger.info(f"Creating attacks from [{args.attacks_section}]...")
+        attacks = create_attacks_from_config(classifier, cfg, section=args.attacks_section)
+        logger.info(f"Total attack configurations: {len(attacks)}")
 
     # Run attacks. Results are saved incrementally so Ctrl+C preserves completed work.
-    output_stem = f"robustness_{args.attacks_section}"
+    output_stem = "robustness_strongpgd" if args.strong_pgd else f"robustness_{args.attacks_section}"
     if args.max_samples is not None:
         output_stem += f"_max{args.max_samples}"
     output_file = results_dir / f"{output_stem}.json"
@@ -235,6 +271,8 @@ def main():
                 clean_confidences=clean_confs,
                 adv_confidences=adv_confs,
                 class_names=class_names,
+                bootstrap=True,
+                bootstrap_seed=seed,
             )
 
             # Compute actual perturbation magnitude

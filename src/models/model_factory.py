@@ -1,17 +1,74 @@
-"""Model factory using timm.
+"""Create timm models with preprocessing consistent across the pipeline.
 
-The current experimental scope keeps DenseNet121 as the single baseline model.
-The classification head is replaced to match the target number of classes.
+Images remain in pixel space (``[0, 1]``) for ART. ImageNet normalization is
+therefore applied at the model boundary for training, attacks and features.
 """
+
+import warnings
 
 import timm
 import torch
 import torch.nn as nn
 
 
+# ResNet complexity ladder (one family, monotonically increasing complexity) for
+# the complexity-vs-robustness study. Approx. parameter counts: resnet18 ~11.7M,
+# resnet34 ~21.8M, resnet50 ~25.6M, resnet101 ~44.5M, resnet152 ~60.2M.
 SUPPORTED_MODELS = {
-    "densenet121": "densenet121",
+    "resnet18": "resnet18",
+    "resnet34": "resnet34",
+    "resnet50": "resnet50",
+    "resnet101": "resnet101",
+    "resnet152": "resnet152",
 }
+
+
+class NormalizedModel(nn.Module):
+    """Apply a timm backbone's expected input normalization."""
+
+    def __init__(self, backbone: nn.Module, mean, std):
+        super().__init__()
+        self.backbone = backbone
+        self.normalization_enabled = True
+        self.register_buffer(
+            "input_mean", torch.tensor(mean, dtype=torch.float32).view(1, -1, 1, 1),
+            persistent=False,
+        )
+        self.register_buffer(
+            "input_std", torch.tensor(std, dtype=torch.float32).view(1, -1, 1, 1),
+            persistent=False,
+        )
+
+    def normalize(self, x: torch.Tensor) -> torch.Tensor:
+        if not self.normalization_enabled:
+            return x
+        return (x - self.input_mean) / self.input_std
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.backbone(self.normalize(x))
+
+    def forward_features(self, x: torch.Tensor):
+        return self.backbone.forward_features(self.normalize(x))
+
+    def forward_head(self, x, *args, **kwargs):
+        return self.backbone.forward_head(x, *args, **kwargs)
+
+    def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
+        """Load both wrapped checkpoints and legacy raw-timm checkpoints."""
+        if state_dict and not any(key.startswith("backbone.") for key in state_dict):
+            # Checkpoints created before the wrapper were trained directly on
+            # [0, 1] pixels. Preserve their original inference semantics; new
+            # training runs save prefixed keys and keep normalization enabled.
+            self.normalization_enabled = False
+            warnings.warn(
+                "Loading a legacy checkpoint trained without input normalization. "
+                "Retrain it before comparing against newly trained models.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return self.backbone.load_state_dict(state_dict, strict=strict, assign=assign)
+        self.normalization_enabled = True
+        return super().load_state_dict(state_dict, strict=strict, assign=assign)
 
 
 def create_model(
@@ -41,13 +98,15 @@ def create_model(
             f"Available models: {list(SUPPORTED_MODELS.keys())}"
         )
 
-    model = timm.create_model(
+    backbone = timm.create_model(
         timm_name,
         pretrained=pretrained,
         num_classes=num_classes,
     )
-
-    return model
+    pretrained_cfg = getattr(backbone, "pretrained_cfg", {})
+    mean = pretrained_cfg.get("mean", (0.485, 0.456, 0.406))
+    std = pretrained_cfg.get("std", (0.229, 0.224, 0.225))
+    return NormalizedModel(backbone, mean, std)
 
 
 def load_checkpoint(model: nn.Module, checkpoint_path: str, device: str = "cpu") -> nn.Module:

@@ -29,8 +29,14 @@ from src.training.imbalance import (
 )
 
 
-def train_one_epoch(model, loader, criterion, optimizer, scaler, device, accumulation_steps=1):
-    """Train for one epoch with AMP and gradient accumulation."""
+def train_one_epoch(model, loader, criterion, optimizer, scaler, device,
+                    accumulation_steps=1, amp_enabled=True, amp_dtype=torch.float16,
+                    grad_clip=None):
+    """Train for one epoch with AMP and gradient accumulation.
+
+    amp_enabled / amp_dtype are decoupled from the scaler: bf16 autocast needs no
+    GradScaler (no fp16 overflow), so it runs with autocast on but a disabled scaler.
+    """
     model.train()
     running_loss = 0.0
     correct = 0
@@ -41,13 +47,16 @@ def train_one_epoch(model, loader, criterion, optimizer, scaler, device, accumul
     for i, (images, labels) in enumerate(tqdm(loader, desc="Training", leave=False)):
         images, labels = images.to(device), labels.to(device)
 
-        with autocast("cuda", enabled=scaler.is_enabled()):
+        with autocast("cuda", enabled=amp_enabled, dtype=amp_dtype):
             outputs = model(images)
             loss = criterion(outputs, labels) / accumulation_steps
 
         scaler.scale(loss).backward()
 
         if (i + 1) % accumulation_steps == 0:
+            if grad_clip is not None:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
@@ -61,12 +70,14 @@ def train_one_epoch(model, loader, criterion, optimizer, scaler, device, accumul
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion, device):
+def evaluate(model, loader, criterion, device, num_classes):
     """Evaluate model on a dataset."""
     model.eval()
     running_loss = 0.0
     correct = 0
     total = 0
+    class_correct = torch.zeros(num_classes, dtype=torch.long)
+    class_total = torch.zeros(num_classes, dtype=torch.long)
 
     for images, labels in tqdm(loader, desc="Evaluating", leave=False):
         images, labels = images.to(device), labels.to(device)
@@ -77,8 +88,16 @@ def evaluate(model, loader, criterion, device):
         _, predicted = outputs.max(1)
         total += labels.size(0)
         correct += predicted.eq(labels).sum().item()
+        labels_cpu = labels.detach().cpu()
+        predicted_cpu = predicted.detach().cpu()
+        for class_idx in range(num_classes):
+            mask = labels_cpu == class_idx
+            class_total[class_idx] += mask.sum()
+            class_correct[class_idx] += (predicted_cpu[mask] == class_idx).sum()
 
-    return running_loss / total, correct / total
+    recalls = class_correct.float() / class_total.clamp_min(1).float()
+    balanced_acc = recalls[class_total > 0].mean().item()
+    return running_loss / total, correct / total, balanced_acc
 
 
 def main():
@@ -160,38 +179,67 @@ def main():
     else:
         raise ValueError(f"Unknown class_balance.loss mode: {loss_mode}")
 
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=train_cfg["lr"],
-        weight_decay=train_cfg["weight_decay"],
+    optimizer_name = str(train_cfg.get("optimizer", "adam")).lower()
+    optimizer_cls = {"adam": torch.optim.Adam, "adamw": torch.optim.AdamW}.get(optimizer_name)
+    if optimizer_cls is None:
+        raise ValueError(f"Unknown optimizer: {optimizer_name}. Choose 'adam' or 'adamw'.")
+    optimizer = optimizer_cls(
+        model.parameters(), lr=train_cfg["lr"], weight_decay=train_cfg["weight_decay"]
+    )
+    logger.info(
+        f"Optimizer: {optimizer_name}, lr={train_cfg['lr']}, "
+        f"weight_decay={train_cfg['weight_decay']}"
     )
 
     # Learning rate scheduler
     scheduler = None
     if train_cfg.get("scheduler") == "cosine":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=train_cfg["epochs"]
-        )
+        warmup_epochs = int(train_cfg.get("warmup_epochs", 0))
+        if warmup_epochs > 0:
+            warmup = torch.optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=0.1, total_iters=warmup_epochs
+            )
+            cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=max(1, train_cfg["epochs"] - warmup_epochs)
+            )
+            scheduler = torch.optim.lr_scheduler.SequentialLR(
+                optimizer, schedulers=[warmup, cosine], milestones=[warmup_epochs]
+            )
+        else:
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=train_cfg["epochs"]
+            )
 
-    # AMP scaler
+    # AMP scaler. fp16 needs GradScaler (overflow-prone); bf16 has fp32 dynamic
+    # range and must NOT be scaled. ConvNeXtV2/Swin overflow under fp16 (GRN/large
+    # activations -> inf grads -> skipped steps -> no learning), so they set
+    # amp_dtype: bfloat16 in their config.
     use_amp = train_cfg.get("amp", True) and device.type == "cuda"
-    scaler = GradScaler("cuda", enabled=use_amp)
+    amp_dtype = torch.bfloat16 if str(train_cfg.get("amp_dtype", "float16")).lower() in {"bf16", "bfloat16"} else torch.float16
+    scaler = GradScaler("cuda", enabled=(use_amp and amp_dtype == torch.float16))
     accumulation_steps = train_cfg.get("accumulation_steps", 1)
-    logger.info(f"AMP: {use_amp}, Gradient accumulation: {accumulation_steps}")
+    logger.info(f"AMP: {use_amp} (dtype={amp_dtype}), Gradient accumulation: {accumulation_steps}")
 
     # Training loop
-    best_val_acc = 0.0
+    best_val_balanced_acc = -1.0
     best_epoch = 0
-    history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+    history = {
+        "train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [],
+        "val_balanced_acc": [],
+    }
 
     checkpoint_path = get_checkpoint_path("checkpoints", dataset_name, model_name, seed)
     logger.info(f"Checkpoint will be saved to: {checkpoint_path}")
 
     for epoch in range(1, train_cfg["epochs"] + 1):
         train_loss, train_acc = train_one_epoch(
-            model, data["train"], criterion, optimizer, scaler, device, accumulation_steps
+            model, data["train"], criterion, optimizer, scaler, device,
+            accumulation_steps, amp_enabled=use_amp, amp_dtype=amp_dtype,
+            grad_clip=train_cfg.get("grad_clip"),
         )
-        val_loss, val_acc = evaluate(model, data["val"], criterion, device)
+        val_loss, val_acc, val_balanced_acc = evaluate(
+            model, data["val"], criterion, device, num_classes
+        )
 
         if scheduler:
             scheduler.step()
@@ -200,37 +248,51 @@ def main():
         history["train_acc"].append(train_acc)
         history["val_loss"].append(val_loss)
         history["val_acc"].append(val_acc)
+        history["val_balanced_acc"].append(val_balanced_acc)
 
         logger.info(
             f"Epoch {epoch}/{train_cfg['epochs']} — "
             f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f} — "
-            f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}"
+            f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, "
+            f"Val Balanced Acc: {val_balanced_acc:.4f}"
         )
 
-        # Save best model
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        # An all-benign model gets ~98.5% raw accuracy on ISIC. Macro recall
+        # (balanced accuracy) prevents that collapsed model from winning.
+        if val_balanced_acc > best_val_balanced_acc:
+            best_val_balanced_acc = val_balanced_acc
             best_epoch = epoch
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "val_acc": val_acc,
+                "val_balanced_acc": val_balanced_acc,
                 "config": cfg,
             }, checkpoint_path)
-            logger.info(f"  -> New best model saved (val_acc={val_acc:.4f})")
+            logger.info(
+                f"  -> New best model saved (val_balanced_acc={val_balanced_acc:.4f})"
+            )
 
-    logger.info(f"Training complete. Best val_acc: {best_val_acc:.4f} at epoch {best_epoch}")
+    logger.info(
+        f"Training complete. Best val_balanced_acc: {best_val_balanced_acc:.4f} "
+        f"at epoch {best_epoch}"
+    )
 
     # Final test evaluation
     model.load_state_dict(torch.load(checkpoint_path, weights_only=True)["model_state_dict"])
-    test_loss, test_acc = evaluate(model, data["test"], criterion, device)
-    logger.info(f"Test accuracy: {test_acc:.4f}")
+    test_loss, test_acc, test_balanced_acc = evaluate(
+        model, data["test"], criterion, device, num_classes
+    )
+    logger.info(
+        f"Test accuracy: {test_acc:.4f}, balanced accuracy: {test_balanced_acc:.4f}"
+    )
 
     # Save training history
-    history["best_val_acc"] = best_val_acc
+    history["best_val_balanced_acc"] = best_val_balanced_acc
     history["best_epoch"] = best_epoch
     history["test_acc"] = test_acc
+    history["test_balanced_acc"] = test_balanced_acc
     with open(results_dir / "history.json", "w") as f:
         json.dump(history, f, indent=2)
 

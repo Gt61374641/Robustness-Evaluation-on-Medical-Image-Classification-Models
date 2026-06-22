@@ -21,6 +21,26 @@ from .chest_xray import (
 from .transforms import get_transforms
 
 
+def _find_oct_root(data_root: Path):
+    """Locate the directory that directly contains train/ and test/.
+
+    Tolerates the kermany2018 archive's quirks: an extra nested level
+    (``oct2017/OCT2017/...``), a folder name with a TRAILING SPACE
+    (``"OCT2017 "``), and junk ``__MACOSX`` dirs. Returns the matching Path or
+    None. Searches the root and up to two levels of subdirectories.
+    """
+    seen = []
+    for c in [data_root, *sorted(data_root.glob("*"))]:
+        if not c.is_dir() or "__MACOSX" in c.name:
+            continue
+        seen.append(c)
+        seen.extend(d for d in sorted(c.glob("*")) if d.is_dir() and "__MACOSX" not in d.name)
+    for c in seen:
+        if (c / "train").is_dir() and (c / "test").is_dir():
+            return c
+    return None
+
+
 def get_retinal_loaders(cfg: dict):
     """Get OCT2017 dataloaders."""
     img_size = cfg["data"].get("img_size", 224)
@@ -32,16 +52,13 @@ def get_retinal_loaders(cfg: dict):
     eval_transform = get_transforms(img_size, is_training=False)
 
     data_root = Path(cfg["data"]["data_dir"]) / "oct2017"
-    # Kaggle's Kermany2018 archive extracts as data/oct2017/OCT2017/{train,test};
-    # accept either that nested layout or a manually-flattened data/oct2017/{train,test}.
-    if (data_root / "OCT2017" / "train").is_dir():
-        data_dir = data_root / "OCT2017"
-    elif (data_root / "train").is_dir():
-        data_dir = data_root
-    else:
+    # The kermany2018 archive extracts inconsistently: sometimes data/oct2017/train,
+    # sometimes a nested data/oct2017/OCT2017/train, and notoriously a folder named
+    # with a TRAILING SPACE ("OCT2017 "). Auto-detect the dir holding train/+test/.
+    data_dir = _find_oct_root(data_root)
+    if data_dir is None:
         raise FileNotFoundError(
-            f"OCT2017 data not found at {data_root}. Expected either "
-            f"{data_root}/train/ or {data_root}/OCT2017/train/. "
+            f"OCT2017 train/+test/ not found under {data_root}. "
             "Run `python scripts/download_data.py --dataset oct2017` first."
         )
 

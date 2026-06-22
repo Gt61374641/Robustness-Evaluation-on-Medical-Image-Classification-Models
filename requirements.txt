@@ -1,12 +1,28 @@
+# Dependencies for the medical-image robustness experiments.
+# Verified locally with torch 2.8.0+cu129, timm 1.0.26, ART 1.20.1 (Python 3.11).
+#
+# torch / torchvision are lower-bounded (not exact-pinned) on purpose: on AutoDL
+# pick a PyTorch 2.x + CUDA 12.x base image and these are already satisfied, so
+# pip won't reinstall torch with a CUDA build that mismatches the driver.
 torch>=2.0.0
 torchvision>=0.15.0
-timm>=0.9.0
-adversarial-robustness-toolbox>=1.17.0
+
+# Models / attacks (pin the lower bound to the tested behaviour: ART>=1.20 has the
+# binary-AutoAttack skip + Madry trainer used here; timm>=1.0 for the resnet tags).
+timm>=1.0.0
+adversarial-robustness-toolbox>=1.20.0
+multiprocess>=0.70.0          # required by ART AutoAttack (multi-class, e.g. OCT)
+
+# Scientific stack
+numpy>=1.24.0
+scipy>=1.10.0
+scikit-learn>=1.2.0
+pandas>=2.0.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
-pandas>=2.0.0
-numpy>=1.24.0
-pyyaml>=6.0
+Pillow>=9.0.0
+
+# Utilities / data download
 tqdm>=4.65.0
-scikit-learn>=1.2.0
+PyYAML>=6.0
 kaggle>=1.5.16

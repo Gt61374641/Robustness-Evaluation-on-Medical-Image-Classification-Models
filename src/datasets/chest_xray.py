@@ -118,6 +118,28 @@ def _stratified_val_carve(samples, seed, val_frac):
     return train_idx, val_idx
 
 
+def _stratified_subsample_indices(samples, indices, frac, seed):
+    """Deterministically keep ~``frac`` of ``indices``, stratified by class label.
+
+    Used to shrink a large training set (e.g. OCT's ~83k) for faster runs while
+    preserving class proportions and using a FIXED subset across all models (the
+    selection depends only on ``seed``). ``frac >= 1.0`` returns indices unchanged.
+    """
+    if frac >= 1.0:
+        return list(indices)
+    by_label = {}
+    for i in indices:
+        by_label.setdefault(samples[i][1], []).append(i)
+    generator = torch.Generator().manual_seed(seed)
+    kept = []
+    for label in sorted(by_label):
+        idxs = by_label[label]
+        order = torch.randperm(len(idxs), generator=generator).tolist()
+        n_keep = max(1, int(round(frac * len(idxs))))
+        kept += [idxs[k] for k in order[:n_keep]]
+    return sorted(kept)
+
+
 def _has_class_subdirs(path: Path) -> bool:
     """Return True if `path` exists and contains at least one non-empty class subdir."""
     if not path.is_dir():

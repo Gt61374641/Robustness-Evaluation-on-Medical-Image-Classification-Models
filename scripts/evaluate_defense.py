@@ -36,7 +36,9 @@ from src.models import create_model
 from src.models.model_factory import load_checkpoint
 from src.attacks import create_attacks_from_config, create_defense_eval_attacks
 from src.defenses import create_defense_trainer, create_preprocessor_defense
-from src.training.imbalance import compute_class_weights
+from src.training.imbalance import compute_class_weights, get_dataset_labels
+from src.evaluation.subset import stratified_indices
+from torch.utils.data import DataLoader, Subset
 from src.evaluation.metrics import evaluate_robustness
 from src.evaluation.subset import get_attack_subset
 from scripts.evaluate_robustness import collect_test_data, get_predictions_and_confidences
@@ -144,6 +146,24 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
     num_classes = data["num_classes"]
     model = create_model(model_name, num_classes, pretrained=cfg["model"]["pretrained"]).to(device)
 
+    # Capped, stratified val loader for the per-epoch robust-selection metric.
+    # OCT's val is ~8.3k; running inner PGD over all of it every epoch is the
+    # bottleneck, so cap selection to a fixed stratified subset. Configurable via
+    # defense_eval.val_eval_max (default 1024). Final attack eval still uses the
+    # full test set.
+    val_eval_max = int(cfg.get("defense_eval", {}).get("val_eval_max", 1024))
+    val_dataset = data["val"].dataset
+    val_labels = get_dataset_labels(val_dataset).numpy()
+    if len(val_labels) > val_eval_max:
+        sel = stratified_indices(val_labels, val_eval_max, seed)
+        robust_val_loader = DataLoader(
+            Subset(val_dataset, sel), batch_size=data["val"].batch_size,
+            shuffle=False, num_workers=data["val"].num_workers, pin_memory=True,
+        )
+        logger.info(f"Robust-val selection on a stratified {len(sel)}/{len(val_labels)} subset.")
+    else:
+        robust_val_loader = data["val"]
+
     # --- loss / optimizer / scheduler / AMP mirror scripts/train.py ---
     train_cfg = cfg["train"]
     loss_mode = train_cfg.get("class_balance", {}).get("loss", "none")
@@ -205,7 +225,7 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
         if scheduler:
             scheduler.step()
 
-        robust_bal = _robust_balanced_acc(model, data["val"], eps, eps_step, max_iter, device, num_classes)
+        robust_bal = _robust_balanced_acc(model, robust_val_loader, eps, eps_step, max_iter, device, num_classes)
         logger.info(f"AT epoch {epoch}/{nb_epochs} — train loss {running / max(seen, 1):.4f} — "
                     f"val robust balanced acc {robust_bal:.4f}")
         if robust_bal > best_robust_bal:

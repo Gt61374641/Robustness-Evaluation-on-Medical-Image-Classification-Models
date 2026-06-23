@@ -68,7 +68,9 @@ defenses_main:
     eps: 0.031373
     eps_step: 0.007843
     max_iter: 7
-    nb_epochs: 10
+    nb_epochs: 20              # harder 4-class task: more AT epochs to converge
+    eps_warmup_epochs: 5       # ramp perturbation budget over first epochs (AT stabiliser)
+    lr_warmup_epochs: 3        # ramp LR over first epochs (AT stabiliser)
     batch_size: 32
 
 defense_eval:

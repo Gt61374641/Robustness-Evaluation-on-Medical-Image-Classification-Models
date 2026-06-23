@@ -71,6 +71,8 @@ defenses_main:
     eps_step: 0.007843          # 2/255
     max_iter: 7
     nb_epochs: 20
+    eps_warmup_epochs: 5        # ramp perturbation budget over first epochs (AT stabiliser)
+    lr_warmup_epochs: 3         # ramp LR over first epochs (AT stabiliser)
     batch_size: 16
   - name: "TRADES"              # second method (ablation; run on resnet50 if compute-limited)
     eps: 0.031373

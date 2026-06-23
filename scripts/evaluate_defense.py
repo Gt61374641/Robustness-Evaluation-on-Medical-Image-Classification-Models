@@ -180,8 +180,23 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
         weight_decay=train_cfg.get("weight_decay", 0.0),
     )
     nb_epochs = defense_cfg.get("nb_epochs", train_cfg["epochs"])
-    scheduler = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nb_epochs)
-                 if train_cfg.get("scheduler") == "cosine" else None)
+    # AT stabilisers (default 0 = off): warming up the LR and the perturbation
+    # budget over the first epochs prevents the early collapse to a degenerate
+    # (uniform-output) solution that AT can fall into on harder tasks / smaller
+    # models when hit with full eps from a pretrained init.
+    lr_warmup_epochs = int(defense_cfg.get("lr_warmup_epochs", 0))
+    eps_warmup_epochs = int(defense_cfg.get("eps_warmup_epochs", 0))
+    scheduler = None
+    if train_cfg.get("scheduler") == "cosine":
+        if lr_warmup_epochs > 0:
+            warmup = torch.optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=0.1, total_iters=lr_warmup_epochs)
+            cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=max(1, nb_epochs - lr_warmup_epochs))
+            scheduler = torch.optim.lr_scheduler.SequentialLR(
+                optimizer, [warmup, cosine], milestones=[lr_warmup_epochs])
+        else:
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=nb_epochs)
 
     use_amp = train_cfg.get("amp", True) and device.type == "cuda"
     amp_dtype = (torch.bfloat16 if str(train_cfg.get("amp_dtype", "float16")).lower()
@@ -194,7 +209,8 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
     logger.info(
         f"PGD-AT: eps={eps:.5f}, eps_step={eps_step:.5f}, inner_iter={max_iter}, "
         f"nb_epochs={nb_epochs}, batch_size={cfg['data']['batch_size']}, "
-        f"weight_decay={train_cfg.get('weight_decay', 0.0)}, amp={use_amp}({amp_dtype})"
+        f"weight_decay={train_cfg.get('weight_decay', 0.0)}, amp={use_amp}({amp_dtype}), "
+        f"lr_warmup={lr_warmup_epochs}, eps_warmup={eps_warmup_epochs}"
     )
     if train_max_samples is not None:
         logger.warning(f"SMOKE MODE: limiting AT to ~{train_max_samples} samples/epoch. "
@@ -205,12 +221,16 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
 
     best_robust_bal, best_epoch = -1.0, 0
     for epoch in range(1, nb_epochs + 1):
+        # Linearly ramp the training perturbation budget over the warmup epochs
+        # (robust-val selection below always uses the FULL eps — the real threat).
+        ramp = min(1.0, epoch / eps_warmup_epochs) if eps_warmup_epochs > 0 else 1.0
+        cur_eps, cur_eps_step = eps * ramp, eps_step * ramp
         model.train()
         seen, running = 0, 0.0
         for images, labels in tqdm(data["train"], desc=f"AT {epoch}/{nb_epochs}", leave=False):
             images, labels = images.to(device), labels.to(device)
             model.eval()                                   # stable BN during attack gen
-            x_adv = _pgd_perturb(model, images, labels, eps, eps_step, max_iter)
+            x_adv = _pgd_perturb(model, images, labels, cur_eps, cur_eps_step, max_iter)
             model.train()
             optimizer.zero_grad()
             with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
@@ -226,8 +246,8 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
             scheduler.step()
 
         robust_bal = _robust_balanced_acc(model, robust_val_loader, eps, eps_step, max_iter, device, num_classes)
-        logger.info(f"AT epoch {epoch}/{nb_epochs} — train loss {running / max(seen, 1):.4f} — "
-                    f"val robust balanced acc {robust_bal:.4f}")
+        logger.info(f"AT epoch {epoch}/{nb_epochs} (train eps={cur_eps:.5f}) — "
+                    f"train loss {running / max(seen, 1):.4f} — val robust balanced acc {robust_bal:.4f}")
         if robust_bal > best_robust_bal:
             best_robust_bal, best_epoch = robust_bal, epoch
             torch.save({"model_state_dict": model.state_dict(), "defense": defense_cfg["name"],

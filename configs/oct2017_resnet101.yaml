@@ -78,5 +78,10 @@ defense_eval:
     max_iter: 50
     num_random_init: 5
     eps: [0.003922, 0.007843, 0.015686, 0.031373, 0.062745]   # 1,2,4,8,16 /255
-  autoattack:
-    eps: [0.031373]
+  # AutoAttack disabled for OCT: its SquareAttack component (5000 queries) takes
+  # ~6-8 h PER model, impractical for a secondary dataset. PGD-50 + 5 restarts is
+  # the strong eval we actually compare standard-vs-AT on (and what binary tasks
+  # use). Re-enable by restoring an `autoattack:` block if a gold-standard check
+  # is needed on a single model.
+  # autoattack:
+  #   eps: [0.031373]

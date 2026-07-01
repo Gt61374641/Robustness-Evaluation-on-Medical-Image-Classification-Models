@@ -59,6 +59,18 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def _resolve_result(base: Path, stem: str) -> Path | None:
+    """Return the plain result file, else the largest-sample _max variant.
+
+    Evaluations run with --max-samples append a _max<N> suffix (e.g.
+    robustness_attacks_main_max1024.json), so the plain name may not exist."""
+    plain = base / f"{stem}.json"
+    if plain.exists():
+        return plain
+    candidates = sorted(base.glob(f"{stem}_max*.json"))
+    return candidates[-1] if candidates else None
+
+
 def parse_attack_key(key: str) -> tuple[str, float | None, int | None, str]:
     """Parse keys such as FGSM_eps=0.031372 or DeepFool_default."""
     if "_eps=" in key:
@@ -110,13 +122,13 @@ def metrics_to_rows(results: dict) -> list[dict]:
 def load_experiment_frame(results_dir: Path, dataset: str, model: str, seed: str) -> pd.DataFrame:
     base = results_dir / dataset / model / "robustness" / seed
     paths = [
-        base / "robustness_attacks_main.json",
-        base / "robustness_attacks_extended.json",
+        _resolve_result(base, "robustness_attacks_main"),
+        _resolve_result(base, "robustness_attacks_extended"),
     ]
 
     rows = []
     for path in paths:
-        if path.exists():
+        if path is not None and path.exists():
             rows.extend(metrics_to_rows(load_json(path)))
 
     if not rows:

@@ -18,6 +18,10 @@ build/
 *.pt
 *.pth
 *.ckpt
+# Result/checkpoint transport archives downloaded from the cloud instance
+*.tgz
+*.tar.gz
+tests/_pytest_tmp*/
 .ipynb_checkpoints/
 *.log
 wandb/

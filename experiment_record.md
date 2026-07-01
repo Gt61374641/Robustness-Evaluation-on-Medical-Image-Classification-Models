@@ -158,19 +158,41 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 - 混淆:R50 clean 最高(0.869)却最脆弱(准确率-鲁棒性权衡的体现),但 R152 高 clean 又鲁棒 → 非单一规律。
 - PGD 仅在 sub-0.25/255 有区分度;≥1/255 全塌缩(见 §6 大 ε 退化)。FGSM 全程平缓且趋势相反。
 
-### 5.3 对抗训练(PGD-50+5重启强评估,full robust accuracy)
+### 5.3 对抗训练(统一 warmup 协议;PGD-50+5重启强评估,full robust accuracy)
 
-| 模型 | AT-clean | PGD@1 | PGD@2 | PGD@4 | **PGD@8** | PGD@16 |
-|---|---|---|---|---|---|---|
-| ResNet-18 | 0.742 | 0.724 | 0.708 | 0.678 | **0.622** | 0.442 |
-| ResNet-50 | 0.785 | 0.763 | 0.736 | 0.699 | **0.627** | 0.268 |
-| ResNet-152 | 0.798 | 0.779 | 0.748 | 0.718 | **0.625** | 0.228 |
+> **最终验证版**:2026-06-30/07-01 在 AutoDL 用**统一 warmup 协议**(eps_warmup=5,lr_warmup=3,
+> nb_epochs=20,自定义 PGD-AT 循环对齐标准训练:weighted CE + cosine + AMP + 鲁棒-val 选点)重跑并核验。
+> 下表 chest(R50/R152 多 seed)。**注:此表替换了旧的非统一循环单值表**(旧值 R18 0.742/R50 0.785/R152 0.798 @8≈0.62)。
+>
+> ⚠️ **协议一致性脚注(chest R50)**:表中 chest **R50(seed42/43)的 AT 权重训练于 2026-06-23,早于 warmup 引入**
+> (逐-epoch 日志无 `train eps` ramp、config header 无 `lr_warmup/eps_warmup` 字段),即**无 warmup**;而同数据集
+> R18/R152 是 06-30 的 warmup 版。R50 无 warmup 已良好收敛(train loss 0.73→0.636 < ln2=0.693,clean 0.804),
+> warmup 只对塌缩的难例有用、对已收敛的 R50 不会翻案。为与 R18/R152 严格 apples-to-apples,**当前 R50 config
+> 已含 warmup(eps_warmup=5/lr_warmup=3/nb_epochs=20),用它重跑即统一**(见 §8 待办)。
+> malaria(R50/R152 均无 warmup)与 oct(三者均 warmup)在数据集内部协议一致,无此问题。
 
-**发现(H2):**
-1. **AT 巨幅提升鲁棒性**:标准 PGD@8/255 ≈ 0 → AT 后 ≈ **0.62**(三者一致)。
-2. **AT-clean 随复杂度单调上升**(0.742→0.785→0.798)→ 大模型 AT 后 clean 代价更小。
-3. **小-中 ε(1-4/255):大模型更鲁棒**(R152>R50>R18)→ **印证范文 AT 结论**(clean 最高/最复杂者最鲁棒)。
-4. **8/255 三者≈相等**(AT 抹平复杂度差异);**16/255 反转**(R18 0.44 > R152 0.23)。
+| 模型 | seed | AT-clean | PGD@1 | PGD@2 | PGD@4 | **PGD@8** | PGD@16 | 状态 |
+|---|---|---|---|---|---|---|---|---|
+| ResNet-18 | 42 | 0.614 | 0.000 | 0.000 | 0.000 | **0.000** | 0.000 | ❌ 塌缩 |
+| ResNet-18 | 43 | 0.625 | 0.300 | 0.051 | 0.000 | **0.000** | 0.000 | ❌ 塌缩 |
+| ResNet-50 | 42 | 0.804 | 0.787 | 0.748 | 0.673 | **0.527** | 0.276 | ✅ |
+| ResNet-50 | 43 | 0.804 | 0.779 | 0.744 | 0.675 | **0.522** | 0.274 | ✅ |
+| ResNet-152 | 42 | 0.819 | 0.812 | 0.787 | 0.745 | **0.649** | 0.290 | ✅ 最强 |
+
+**发现(H2,统一协议下):**
+1. **AT 巨幅提升鲁棒性**:标准 PGD@8/255 强评估 ≈ 0 → AT 后 R50≈0.52、R152≈0.65。
+2. **复杂度单调有利**:clean(0.80→0.82)与 robust@8(0.527→0.649)都随复杂度上升,**R152 最强** → **印证范文 AT 结论**(最复杂者 AT 后最鲁棒)。
+3. **最小模型 R18 塌缩**:统一 warmup 协议下两 seed 均塌(clean≈0.62、@8=0)。旧的非统一循环下 R18 曾训成(0.622@8),说明 **R18 处于 AT 可训性边缘、对协议高度敏感** → 作为发现写入(与"复杂度有利"一致)。
+
+### 5.3b 跨数据集 AT 汇总(@8/255,full robust acc;最终验证版)
+
+| 模型 | chest clean/@8 | malaria clean/@8 | oct clean/@8 | 跨数据集 |
+|---|---|---|---|---|
+| ResNet-18 | 0.62 / **0.00** ❌ | 0.46 / **0.00** ❌ | 0.41 / **0.16** ⚠️弱 | 最小模型普遍难 AT |
+| ResNet-50 | 0.80 / **0.53** ✅ | 0.96 / **0.90** ✅ | 0.74 / **0.64** ✅ | 三处都成功 |
+| ResNet-152 | 0.82 / **0.65** ✅ | 0.96 / **0.91** ✅ | 0.25 / **0.03** ❌塌 | chest/malaria 最强;OCT 塌 |
+
+> H2 由 **chest(R50+R152)+ malaria(R50+R152)** 稳稳支撑。**R18 三数据集一致塌缩**、**oct R152 塌缩**(最难 4 类任务 + 最深网络发散到平凡解,train loss 全程钉在 ln4=1.386)→ 均作为诚实发现写入,而非 bug(已用运行时 config 快照 + 逐 epoch 日志确认 warmup 已启用仍塌)。
 
 ### 5.4 可解释性
 
@@ -202,18 +224,29 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 
 ---
 
-## 8. 状态与待办
+## 8. 状态与待办(更新于 2026-07-01)
 
-**已完成:** chest_xray 全流程(标准 3-seed + AT + 强评估 + 可解释性 + 全套图表)。
+**已完成:**
+- chest_xray / malaria / oct2017 三数据集**标准训练 + ε 扫描**(chest 3-seed;malaria/oct seed42)。
+- **AT 代表模型 R18/R50/R152 + 强评估**(三数据集),并完成「建议1」收尾重跑(统一 warmup 协议):
+  - ✅ **chest R152 恢复并补全全 ε 评估**(clean 0.819 / @8 0.649,最强);chest R50 多 seed。
+  - ❌ 确认塌缩(warmup 仍救不回,已写成发现):**R18×三数据集**、**oct R152**。
+- 可解释性(Grad-CAM / 决策边界)目前仅 chest。
 
-**待办:**
-- [ ] OCT2017 全量(标准 5 模型 + ε 扫描;AT 可选;AutoAttack 启用但慢)——验证非单调/AT 结论是否跨数据集。
-- [ ] Malaria 全量(同 chest_xray,二分类跳过 AutoAttack)。
-- [ ] TRADES 第二方法(可选,算力不足只在 R50 消融)。
-- [ ] 多 seed:OCT/malaria 建议单 seed(次数据集);仅 chest_xray 做了 3-seed。
-- [ ] 论文 Results/Discussion 写作。
+**待办(下次再做):**
+- [ ] **重生成 H2 图表/表格**(用最终验证数据):`generate_complexity_figures.py`(三数据集)+ `generate_paper_tables.py`
+      —— **chest R152 的完整 AT 曲线要补上**(之前是截断到 1/255 的旧图);AT 对比柱/CSV 同步刷新。
+- [ ] **chest R50 AT warmup 重跑(协议一致性,优先)**:现 R50 AT 权重(06-23)无 warmup,与 R18/R152(warmup)不齐。
+      config 已含 `eps_warmup=5/lr_warmup=3/nb_epochs=20`,**不加 `--checkpoint` 直接重跑即从 ImageNet 重训带 warmup**,
+      覆盖旧 `_pgd_at.pth` 后重下结果 + 重生成 chest 图/表。预期 clean≈0.80、@8≈0.52(与旧值相近即验证结论稳健)。
+- [ ] (可选)再救一次 **oct R152**:更强稳定化(eps_warmup=8 / lr_warmup=5 / nb_epochs=30 / LR 减半 / 梯度裁剪),独立一次性重跑。
+- [ ] (可选)malaria/oct 的可解释性图(Grad-CAM / 决策边界)。
+- [ ] (可选)TRADES 第二方法、chest AT 多 seed(R152 seed43)。
+- [ ] 论文 **Results / Discussion 写作**。
 
-**全实验预估:** chest_xray 已耗 ~13h;OCT+malaria 全量约 ~15h(OCT 训练 83k 是大头,可子采样加速)。
+**复现要点(本轮新增):** AT 权重在 `checkpoints/{dataset}_{model}_seed42[_43]_pgd_at.pth`(共 11 个,已从云端下载到本地);
+塌缩判定依据 = 运行时 `results/.../defense_PGD-AT/seedN/config.yaml` 快照(确认 warmup 已启用)+ `evaluate_defense.log`
+逐 epoch(train loss 是否钉在 ln(类数):二分类 0.693 / 四分类 1.386)。
 
 ---
 

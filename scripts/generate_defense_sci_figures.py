@@ -79,14 +79,22 @@ def _resolve_result(base: Path, stem: str) -> Path | None:
     return candidates[-1] if candidates else None
 
 
+def _canonical_attack(raw: str) -> str:
+    """Collapse PGD variants to a single 'PGD' family so the standard-model PGD
+    sweep (keyed 'PGD') and the defense evals (keyed 'PGD50-5restart', a stronger
+    eval) land in the same comparison. FGSM/DeepFool/etc. are left untouched."""
+    return "PGD" if raw.upper().startswith("PGD") else raw
+
+
 def parse_attack_key(key: str) -> tuple[str, float | None, int | None, str]:
     if "_eps=" in key:
-        attack, eps_text = key.split("_eps=", maxsplit=1)
+        raw_attack, eps_text = key.split("_eps=", maxsplit=1)
+        attack = _canonical_attack(raw_attack)
         eps = float(eps_text)
         eps_255 = int(round(eps * 255))
         return attack, eps, eps_255, f"{attack} {eps_255}/255"
     if key.endswith("_default"):
-        attack = key.replace("_default", "")
+        attack = _canonical_attack(key.replace("_default", ""))
         return attack, None, None, attack
     return key, None, None, key
 

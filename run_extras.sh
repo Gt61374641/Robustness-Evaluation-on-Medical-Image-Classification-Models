@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # One-shot "extras" for the dissertation, to run on the AutoDL GPU instance.
 # Covers four independent tasks; each section can be run on its own (comment the
-# others out) or all in sequence. RUN INSIDE tmux so it survives SSH drops:
-#   tmux new -s extras     (detach: Ctrl-b then d ; reattach: tmux attach -t extras)
+# others out) or all in sequence.
+#
+# A UK<->China SSH link WILL drop several times over a ~10 h run, so the job must
+# NOT depend on the session staying up. Use ONE of:
+#   tmux:   tmux new -s extras ; bash run_extras.sh 2>&1 | tee run_extras.log
+#           (detach Ctrl-b then d ; reattach: tmux attach -t extras)
+#   nohup:  nohup bash run_extras.sh > run_extras.log 2>&1 &      # survives even a dead terminal
+#           tail -f run_extras.log      # watch; Ctrl-c only stops the tail, not the job
+# Downloads INTO the instance (git/pip/HF/timm weights) are already accelerated
+# via /etc/network_turbo + HF mirror (sourced below). The cross-border cost is
+# the RESULT PULL, handled in section 4 (only ~3 MB of JSON is essential).
 #
 #   0. chest R50 warmup AT rerun  (protocol consistency with R18/R152)
 #   1. Multi-seed STANDARD training for malaria + oct  (adds error bars to H1)
@@ -98,8 +107,24 @@ for m in resnet18 resnet50 resnet152; do
 done
 
 ########################################################################
-# 4. Package for local download.
+# 4. Package for local download — UK<->China link is the bottleneck, so split:
+#    - results_json.tgz : the ~3 MB of JSON/YAML the local figures+tables need.
+#      This is the ONLY essential pull. Transfers in seconds even cross-border.
+#    - gradcam_png.tgz  : PNG-only Grad-CAM (skip svg/pdf/tiff to cut size).
+#      Optional; download when convenient.
+#    Checkpoints (.pth, several GB) are NOT packed — they stay on the AutoDL
+#    data disk (persists across shutdown). Never pull them cross-border unless
+#    you specifically want a backup, and then do it overnight, not blocking.
 ########################################################################
-echo "############### 4. packaging ###############"
-tar czf results_extras.tgz results/ figures/gradcam/
-echo "===== extras done. Download results_extras.tgz to the local repo and unpack. ====="
+echo "############### 4. packaging (transfer-lean) ###############"
+find results -name '*.json' -o -name '*.yaml' > /tmp/flist.txt
+tar czf results_json.tgz -T /tmp/flist.txt
+echo "  results_json.tgz : $(du -h results_json.tgz | cut -f1)  <-- essential, pull this first"
+find figures/gradcam -name '*.png' > /tmp/glist.txt
+tar czf gradcam_png.tgz -T /tmp/glist.txt
+echo "  gradcam_png.tgz  : $(du -h gradcam_png.tgz | cut -f1)  <-- optional"
+echo ""
+echo "===== extras done ====="
+echo "Pull to the local repo (rsync resumes a dropped cross-border transfer):"
+echo "  rsync -P --append-verify -e ssh <user>@<autodl-host>:.../results_json.tgz ."
+echo "then locally:  tar xzf results_json.tgz   (overwrites results/ JSONs — cloud is authoritative)"

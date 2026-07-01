@@ -67,6 +67,18 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def _resolve_result(base: Path, stem: str) -> Path | None:
+    """Return the plain result file, else the largest-sample _max variant.
+
+    Evaluations run with --max-samples append a _max<N> suffix (e.g.
+    defense_results_max1024.json), so the plain name may not exist."""
+    plain = base / f"{stem}.json"
+    if plain.exists():
+        return plain
+    candidates = sorted(base.glob(f"{stem}_max*.json"))
+    return candidates[-1] if candidates else None
+
+
 def parse_attack_key(key: str) -> tuple[str, float | None, int | None, str]:
     if "_eps=" in key:
         attack, eps_text = key.split("_eps=", maxsplit=1)
@@ -116,16 +128,19 @@ def load_defense_frame(results_dir: Path, dataset: str, model: str, seed: str) -
 
     clean_path = results_dir / dataset / model / "clean" / seed / "clean_results.json"
     standard_clean = load_json(clean_path)["accuracy"]
-    standard_results = load_json(
-        results_dir / dataset / model / "robustness" / seed / "robustness_attacks_main.json"
+    std_path = _resolve_result(
+        results_dir / dataset / model / "robustness" / seed, "robustness_attacks_main"
     )
+    standard_results = load_json(std_path)
     append_result_rows(rows, "Standard", standard_results, standard_clean)
 
     for method in METHOD_ORDER:
         if method == "Standard":
             continue
-        path = results_dir / dataset / model / f"defense_{method}" / seed / "defense_results.json"
-        if not path.exists():
+        path = _resolve_result(
+            results_dir / dataset / model / f"defense_{method}" / seed, "defense_results"
+        )
+        if path is None:
             continue
         results = load_json(path)
         clean_accuracy = results.get("clean_accuracy_defended")

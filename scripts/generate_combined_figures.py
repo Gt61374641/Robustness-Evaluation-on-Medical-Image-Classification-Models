@@ -28,8 +28,8 @@ COLORS = {m: c for m, c in zip(MODELS, plt.cm.viridis(np.linspace(0.0, 0.9, len(
 
 DATASETS = [
     ("chest_xray_pneumonia", "Chest X-ray", ["seed42", "seed43", "seed44"]),
-    ("malaria", "Malaria", ["seed42"]),
-    ("oct2017", "OCT2017", ["seed42"]),
+    ("malaria", "Malaria", ["seed42", "seed43", "seed44"]),
+    ("oct2017", "OCT2017", ["seed42", "seed43", "seed44"]),
 ]
 EPS_MAX_255 = 0.3   # crop to the discriminating fine regime (excludes large-eps collapse artifact)
 

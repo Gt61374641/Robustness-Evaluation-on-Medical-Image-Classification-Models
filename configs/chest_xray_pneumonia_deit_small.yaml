@@ -11,7 +11,7 @@ data:
   num_workers: 4
 
 model:
-  name: "resnet50"          # placeholder; overwritten by make_configs.py
+  name: "deit_small"
   pretrained: true
   num_classes: null         # auto-set from dataset
 

@@ -2,7 +2,7 @@
 
 > 毕设题目：*Robustness Evaluation on Medical Image Classification Models*
 > 借鉴：Rodriguez et al. 2022 (BMC, *On the role of deep learning model complexity in adversarial robustness for medical images*)
-> 最后更新：2026-07-01（extras 收尾：malaria/oct 三-seed 误差带、chest TRADES 消融、malaria/oct Grad-CAM、chest R50 warmup 统一）
+> 最后更新：2026-07-10（扩展批次代码就绪：新架构 DeiT-S/ConvNeXt-T、四种新攻击、MART、5 模型 AT 补全 → 见 §9 + `run_extension.sh`，待云端跑）
 
 ---
 
@@ -29,7 +29,20 @@
 | ResNet-101 | 44.5 M | |
 | ResNet-152 | 60.2 M | 最大 |
 
-标准训练 5 个全做;PGD-AT 做 3 个(18/50/152)。
+标准训练 5 个全做;PGD-AT 原做 3 个(18/50/152),**扩展批次补齐 R34/R101(三数据集)→ 5 模型全覆盖**。
+
+**架构对比(扩展批次,chest 主数据集)**:与 ResNet-50(25.6M)参数配对的两个非 ResNet 架构,
+预训练权重统一固定为 **ImageNet-1k-only 有监督**(隔离"架构"变量,排除预训练数据差异):
+
+| 模型 | timm 权重 | 参数量 | 家族 |
+|---|---|---|---|
+| DeiT-S(= ViT-S/16 架构) | `deit_small_patch16_224.fb_in1k` | 22.1 M | Transformer |
+| ConvNeXt-T | `convnext_tiny.fb_in1k` | 28.6 M | 现代 CNN |
+
+> 注:不用 timm 默认 `vit_small_patch16_224`(其权重是 IN21k 预训练→IN1k 微调,与 ResNet 不公平);
+> DeiT-S 就是 ViT-S/16 架构、IN1k-only 训练,论文中可写 "ViT-S (DeiT-S weights)"。
+> chest 上全流程(标准 3-seed + ε 扫描 + attacks_extra + PGD-AT);Grad-CAM 仅 ConvNeXt
+> (conv-hook 式 Grad-CAM 不适用 ViT token 图,写为局限)。
 
 ### 2.2 数据集
 
@@ -60,6 +73,13 @@
 - **细 ε 探针**(`attacks_fine`):`{0.05,0.1,0.15,0.2,0.25,0.5,1}/255` —— **PGD 真正的可区分区间在此**(见结果)。
 - **stress**(`attacks_stress`):`{32,64}/255`(单列)。
 - **扩展**(`attacks_extended`,可选):AutoPGD、SquareAttack。
+- **攻击方法对比(`attacks_extra`,扩展批次,仅 chest,7 个标准模型)**:
+  - **CW**(L2 优化型白盒,max_iter 100 × 10 binary-search;无 ε 网格 → 看扰动幅度 L2/L∞,不能直接和有界攻击比 robust acc);
+  - **DeepFool**(最小扰动,直接度量到决策边界的距离);
+  - **AutoAttack**(强集成;**二分类修复**:ART 默认集成含 APGD-DLR,二分类崩 → 工厂自动改用
+    自定义列表 APGD-CE + DeepFool + Square,AutoAttack 自身会拒绝超出 ε 的候选,故 DeepFool 成员不越界);
+  - **SquareAttack**(黑盒免梯度,5000 查询标准预算,排除梯度混淆嫌疑)。
+  - ε ∈ {2, 8}/255(有界攻击)。共 6 种攻击范式:单步/迭代白盒、优化型、最小扰动、集成、黑盒。
 - 规范:模型 eval、参数冻结、ART `clip_values=(0,1)`、白盒;`NormalizedModel` 在边界内做 ImageNet 归一化,攻击作用于 [0,1] 像素。
 - **公平性**:所有模型/攻击共用同一固定测试集(chest_xray test=624<1024,直接用全测试集)。
 
@@ -67,6 +87,12 @@
 
 - **PGD-AT(Madry)**为核心:内层 PGD-7,eps=8/255,eps_step=2/255,nb_epochs 对齐标准训练,**完整训练集**。
 - **TRADES 第二方法消融(已完成,chest R18/R50/R152)**:走 ART 的 TRADES 训练器(β=6),**不带** PGD-AT 自定义循环的 eps/lr warmup;强评估同为 PGD-50+5重启。见 §5.3c。
+- **MART 第三方法(扩展批次,chest R18/R50/R152)**:misclassification-aware(Wang et al. 2020,
+  boosted CE + (1−p_clean)-加权 KL,β=6);**与 PGD-AT 共用自定义循环** → 同 warmup 稳定器、同
+  内层 PGD-7、同鲁棒-val 选点,与 PGD-AT 严格可比(TRADES 走 ART 训练器无 warmup,对比时注意)。
+  类别不平衡权重只作用于 CE 项(与 PGD-AT/标准训练一致)。
+- **预处理防御(SpatialSmoothing/JPEG/FeatureSqueezing)明确不作主防御**:靠梯度混淆,自适应攻击
+  (BPDA)可击穿,只保留为代码内 baseline,不进论文主结论。
 - **防御模型强评估**(避免高估):**PGD-50 + 5 随机重启**;`defense_eval` 段 eps={1,2,4,8,16}/255。
 - **AutoAttack**:仅 ≥3 类启用(二分类下其 DLR 损失无定义会崩,见 §6)。
 
@@ -267,6 +293,41 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 
 **复现要点(本轮新增):** AT 权重在 `checkpoints/{dataset}_{model}_seed42[_43]_pgd_at.pth`(共 11 个,已从云端下载到本地);
 塌缩判定依据 = 运行时 `results/.../defense_PGD-AT/seedN/config.yaml` 快照(确认 warmup 已启用)+ `evaluate_defense.log`
+
+---
+
+## 9. 扩展批次(2026-07-10 定稿,代码就绪,待云端跑:`run_extension.sh`)
+
+**范围决定:chest(主)全做;malaria/oct 只补 R34/R101 的 PGD-AT。**
+
+| # | 内容 | 明细 | 状态 |
+|---|---|---|---|
+| 1 | 新架构标准训练 | chest × {deit_small, convnext_tiny} × seed{42,43,44},train→clean→鲁棒(main+fine) | ⬜ |
+| 2 | 攻击方法对比 | chest × 7 模型 × `attacks_extra`(CW/DeepFool/AutoAttack/Square),seed42 | ⬜ |
+| 3 | AT 补全 | {chest, malaria, oct} × {R34, R101} × PGD-AT + 强评估 → **5 模型 AT 全覆盖** | ⬜ |
+| 4 | 新架构 AT | chest × {deit_small, convnext_tiny} × PGD-AT | ⬜ |
+| 5 | MART | chest × {R18, R50, R152}(与 TRADES 三元组对齐)→ 三方法对比 | ⬜ |
+| 6 | Grad-CAM | convnext_tiny 标准+AT(deit 跳过,ViT CAM 局限) | ⬜ |
+
+**本批次代码改动(已完成并本地校验语法/配置):**
+- `src/models/model_factory.py`:+`deit_small`(ViT-S/16, IN1k-only)、+`convnext_tiny`。
+- `src/attacks/attack_factory.py`:CW/DeepFool 补 `batch_size`(ART 默认 1 慢到不可用);
+  **AutoAttack 二分类修复**(nb_classes<3 → 自定义集成 APGD-CE+DeepFool+Square,去 DLR)。
+- `scripts/evaluate_defense.py`:`_run_pgd_at` 泛化为 `_run_custom_at`(PGD-AT/MART 共用),
+  新增 `_mart_loss`(忠实官方实现);`MAIN_DEFENSES` += MART。
+- `configs/chest_xray_pneumonia_base.yaml`:+`attacks_extra` 段、+MART 防御块(batch 8,双前向)。
+- `scripts/make_configs.py`:按数据集区分模型清单(chest 17 份配置中含 2 个新架构)。
+- `scripts/evaluate_robustness.py`:`--attacks-section` += `attacks_extra`。
+
+**协议决定(重要):防御(defended-model)强评估协议保持不变**(PGD-50+5重启;二分类跳过
+AutoAttack)。二分类可用的 AutoAttack 只用于**标准模型**的攻击对比(attacks_extra)——若给新
+AT 模型加 AutoAttack 而旧结果没有,同一张表里会混两种协议;要加必须先全量回填(见
+`create_defense_eval_attacks` 注释)。
+
+**跑完后的出图/表(下一步):** 架构对比曲线(ResNet 阶梯 + 2 新架构同图)、六攻击对比表
+(有界攻击 robust acc @2,8/255;CW/DeepFool 报扰动 L2/L∞)、三防御方法柱状图
+(Standard/PGD-AT/TRADES/MART)、5 点 H2 复杂度曲线 —— 需要小幅扩展
+`generate_complexity_figures.py`/`generate_defense_sci_figures.py` 的模型清单参数。
 逐 epoch(train loss 是否钉在 ln(类数):二分类 0.693 / 四分类 1.386)。
 
 ---

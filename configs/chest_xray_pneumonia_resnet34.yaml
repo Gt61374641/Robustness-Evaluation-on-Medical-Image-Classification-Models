@@ -63,6 +63,28 @@ attacks_extended:
     eps: [0.015686, 0.031373]
     max_queries: 1000
 
+# --- Attack-method comparison (chest only): four attacks beyond FGSM/PGD,
+#     covering distinct paradigms — optimization-based L2 (CW), minimal
+#     perturbation (DeepFool), strong ensemble (AutoAttack; binary-safe reduced
+#     ensemble APGD-CE+DeepFool+Square, no DLR), gradient-free black-box (Square).
+#     CW/DeepFool have NO eps grid: their robust accuracy is not comparable to
+#     bounded attacks — report their perturbation block (L2/Linf) alongside. ---
+attacks_extra:
+  - name: "CW"
+    max_iter: 100
+    binary_search_steps: 10
+    batch_size: 32
+  - name: "DeepFool"
+    max_iter: 50
+    batch_size: 32
+  - name: "AutoAttack"
+    eps: [0.007843, 0.031373]   # 2, 8 /255
+    batch_size: 32
+  - name: "SquareAttack"
+    eps: [0.007843, 0.031373]
+    max_queries: 5000           # standard budget (Andriushchenko et al. 2020)
+    batch_size: 32
+
 # --- Adversarial training. Inner PGD is cheap (max_iter 7-10); FORMAL AT must
 #     use the full training set (do NOT pass --max-samples for AT training). ---
 defenses_main:
@@ -81,6 +103,15 @@ defenses_main:
     beta: 6.0
     batch_size: 8
     max_iter: 7
+  - name: "MART"                # third method (Wang et al. 2020); custom loop shared
+    eps: 0.031373               # with PGD-AT -> same warmup stabilisers apply
+    eps_step: 0.007843
+    max_iter: 7                 # inner PGD matched to PGD-AT for a fair comparison
+    nb_epochs: 20
+    beta: 6.0                   # official MART default
+    eps_warmup_epochs: 5
+    lr_warmup_epochs: 3
+    batch_size: 8               # clean+adv double forward needs ~2x memory vs PGD-AT
 
 # --- Strong attacks used to EVALUATE the defended model (avoid overestimating). ---
 defense_eval:

@@ -14,12 +14,21 @@ import torch.nn as nn
 # ResNet complexity ladder (one family, monotonically increasing complexity) for
 # the complexity-vs-robustness study. Approx. parameter counts: resnet18 ~11.7M,
 # resnet34 ~21.8M, resnet50 ~25.6M, resnet101 ~44.5M, resnet152 ~60.2M.
+#
+# Architecture comparison (chest primary dataset): two non-ResNet architectures
+# parameter-matched to ResNet-50 (~25.6M). Pretrained tags are pinned to
+# ImageNet-1k-only SUPERVISED weights so the comparison isolates architecture,
+# not pretraining data: DeiT-S IS the ViT-S/16 architecture trained on IN1k only
+# (the plain vit_small default tag was pretrained on IN21k); ConvNeXt-T uses the
+# original Facebook IN1k weights.
 SUPPORTED_MODELS = {
     "resnet18": "resnet18",
     "resnet34": "resnet34",
     "resnet50": "resnet50",
     "resnet101": "resnet101",
     "resnet152": "resnet152",
+    "deit_small": "deit_small_patch16_224.fb_in1k",   # ViT-S/16, ~22.1M
+    "convnext_tiny": "convnext_tiny.fb_in1k",         # modern CNN, ~28.6M
 }
 
 

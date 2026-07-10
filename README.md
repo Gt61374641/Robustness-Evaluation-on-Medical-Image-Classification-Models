@@ -11,12 +11,17 @@ range of attack budgets, then adversarially trained and re-evaluated.
 
 - **Models** — ResNet complexity ladder: `resnet18, resnet34, resnet50, resnet101,
   resnet152` (~11.7M → ~60.2M params), ImageNet-pretrained fine-tuning.
+  Architecture comparison (chest only): `deit_small` (ViT-S/16) + `convnext_tiny`,
+  parameter-matched to ResNet-50, IN1k-only supervised weights.
 - **Datasets** — `chest_xray_pneumonia` (binary, **primary**), `oct2017` (4-class),
   `malaria` (binary, color; NIH cell images, **patient-level split**).
-- **Attacks** — FGSM + PGD core eps-sweep `{1,2,4,8,16}/255` (stress `{32,64}/255`).
-- **Adversarial training** — PGD-AT (primary: resnet18/50/152, full training set),
-  TRADES as a second method; defended models evaluated with a **strong** protocol
-  (PGD-50 + 5 restarts + AutoAttack).
+- **Attacks** — FGSM + PGD core eps-sweep `{1,2,4,8,16}/255` (stress `{32,64}/255`);
+  attack-method comparison (`attacks_extra`, chest): CW, DeepFool, AutoAttack
+  (binary-safe reduced ensemble), SquareAttack.
+- **Adversarial training** — PGD-AT (all five ResNets + both new architectures,
+  full training set), TRADES + MART as second/third methods (chest 18/50/152);
+  defended models evaluated with a **strong** protocol (PGD-50 + 5 restarts;
+  AutoAttack where ≥3 classes).
 - **Outputs** — clean metrics, robustness metrics (full + conditional robust
   accuracy), complexity-vs-eps curves, complexity/AT tables, Grad-CAM.
 

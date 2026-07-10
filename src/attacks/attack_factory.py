@@ -68,11 +68,14 @@ def create_attack(classifier: PyTorchClassifier, attack_cfg: dict, eps: float = 
         )
 
     elif name == "CW":
+        # ART's default batch_size is 1, which is unusably slow on 224x224 inputs.
         return attack_cls(
             classifier=classifier,
             confidence=attack_cfg.get("confidence", 0),
             max_iter=attack_cfg.get("max_iter", 100),
             learning_rate=attack_cfg.get("lr", 0.01),
+            binary_search_steps=attack_cfg.get("binary_search_steps", 10),
+            batch_size=attack_cfg.get("batch_size", 32),
         )
 
     elif name == "DeepFool":
@@ -80,6 +83,7 @@ def create_attack(classifier: PyTorchClassifier, attack_cfg: dict, eps: float = 
             classifier=classifier,
             max_iter=attack_cfg.get("max_iter", 50),
             epsilon=attack_cfg.get("epsilon", 1e-6),
+            batch_size=attack_cfg.get("batch_size", 32),
         )
 
     elif name == "AutoPGD":
@@ -93,13 +97,36 @@ def create_attack(classifier: PyTorchClassifier, attack_cfg: dict, eps: float = 
 
     elif name == "AutoAttack":
         attack_eps = eps if eps is not None else attack_cfg.get("eps", 8 / 255)
-        return attack_cls(
+        eps_step = attack_cfg.get("eps_step", attack_eps / 10)
+        batch_size = attack_cfg.get("batch_size", 32)
+        kwargs = dict(
             estimator=classifier,
             norm="inf",
             eps=attack_eps,
-            eps_step=attack_cfg.get("eps_step", attack_eps / 10),
-            batch_size=attack_cfg.get("batch_size", 32),
+            eps_step=eps_step,
+            batch_size=batch_size,
         )
+        # ART's default ensemble is APGD-CE + APGD-DLR + DeepFool + Square. The
+        # DLR loss needs the 3rd-highest logit and is UNDEFINED for binary tasks
+        # (crashes with "index -3 is out of bounds ... size 2"), so for <3 classes
+        # we rebuild the ensemble without the DLR member. AutoAttack itself rejects
+        # any candidate whose perturbation exceeds eps, so unbounded members
+        # (DeepFool) stay within budget.
+        nb = getattr(classifier, "nb_classes", None)
+        if nb is not None and nb < 3:
+            kwargs["attacks"] = [
+                AutoProjectedGradientDescent(
+                    estimator=classifier, norm="inf", eps=attack_eps,
+                    eps_step=eps_step, max_iter=attack_cfg.get("max_iter", 100),
+                    batch_size=batch_size, loss_type="cross_entropy",
+                ),
+                DeepFool(classifier=classifier, max_iter=50, batch_size=batch_size),
+                SquareAttack(
+                    estimator=classifier, norm="inf", eps=attack_eps,
+                    max_iter=attack_cfg.get("max_queries", 1000), batch_size=batch_size,
+                ),
+            ]
+        return attack_cls(**kwargs)
 
     elif name == "SquareAttack":
         attack_eps = eps if eps is not None else attack_cfg.get("eps", 8 / 255)
@@ -204,14 +231,16 @@ def create_defense_eval_attacks(classifier: PyTorchClassifier, cfg: dict):
                             eps_val, create_attack(classifier, base, eps=eps_val)))
 
     aa_cfg = eval_cfg.get("autoattack")
-    # ART's AutoAttack ensemble includes an APGD variant with the DLR loss, which
-    # needs the 3rd-highest logit and is therefore UNDEFINED for binary tasks
-    # (it crashes with "index -3 is out of bounds ... size 2"). For <3 classes we
-    # skip it: PGD-50 with random restarts is the strong evaluation for binary.
+    # For <3 classes we keep skipping AutoAttack in the DEFENSE eval, even though
+    # create_attack() now supports a binary-safe reduced ensemble (used by the
+    # standard-model attacks_extra comparison). Reason: all existing defended-model
+    # results were produced under the PGD-50+restarts-only protocol; adding
+    # AutoAttack for new runs only would silently mix two protocols in the same
+    # comparison tables. Backfill ALL defended models first if you enable this.
     nb = getattr(classifier, "nb_classes", None)
     if aa_cfg and nb is not None and nb < 3:
-        print(f"[defense_eval] Skipping AutoAttack: DLR loss needs >=3 classes (got {nb}); "
-              "PGD-50 + restarts is the strong eval for binary tasks.")
+        print(f"[defense_eval] Skipping AutoAttack for binary task ({nb} classes): "
+              "PGD-50 + restarts is the strong eval protocol all defended models share.")
         aa_cfg = None
     if aa_cfg:
         for eps_val in aa_cfg.get("eps", []):

@@ -6,6 +6,7 @@ Evaluates both main defenses (adversarial training) and baseline defenses
 Usage:
     # Adversarial training (main defense — retrains the model)
     python scripts/evaluate_defense.py --config configs/config.yaml --defense PGD-AT
+    python scripts/evaluate_defense.py --config configs/config.yaml --defense MART
 
     # Preprocessor defense (baseline only — applies at inference time)
     python scripts/evaluate_defense.py --config configs/config.yaml --defense SpatialSmoothing --checkpoint checkpoints/xxx.pth
@@ -44,7 +45,7 @@ from src.evaluation.subset import get_attack_subset
 from scripts.evaluate_robustness import collect_test_data, get_predictions_and_confidences
 
 
-MAIN_DEFENSES = {"PGD-AT", "TRADES"}
+MAIN_DEFENSES = {"PGD-AT", "TRADES", "MART"}
 BASELINE_DEFENSES = {"SpatialSmoothing", "JpegCompression", "FeatureSqueezing"}
 RESULT_SCHEMA_VERSION = 2
 
@@ -118,25 +119,59 @@ def _robust_balanced_acc(model, loader, eps, eps_step, max_iter, device, num_cla
 
 
 def run_adversarial_training(cfg, defense_cfg, device, logger, train_max_samples=None):
-    """Dispatch adversarial training. PGD-AT uses a custom loop harmonized with
-    standard training (scripts/train.py); TRADES keeps the ART trainer path.
+    """Dispatch adversarial training. PGD-AT and MART share a custom loop
+    harmonized with standard training (scripts/train.py); TRADES keeps the ART
+    trainer path.
 
     train_max_samples is for SMOKE TESTS ONLY. Formal AT must use the full training
     set (leave it None); limiting training data here would invalidate the comparison.
     """
-    if defense_cfg["name"] == "PGD-AT":
-        return _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples)
+    if defense_cfg["name"] in ("PGD-AT", "MART"):
+        return _run_custom_at(cfg, defense_cfg, device, logger, train_max_samples)
     return _run_art_trainer(cfg, defense_cfg, device, logger, train_max_samples)
 
 
-def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
-    """Madry PGD adversarial training whose loss/optimizer/scheduler/AMP exactly
-    mirror scripts/train.py, so the ONLY deliberate difference from the standard
-    model is the adversarial inner loop. Best checkpoint is selected on val ROBUST
-    balanced accuracy (per-class recall under PGD)."""
+def _mart_loss(model, x, x_adv, y, beta, ce_weight=None):
+    """MART objective (Wang et al. 2020, "Improving Adversarial Robustness Requires
+    Revisiting Misclassified Examples"), faithful to the official implementation:
+
+        L = BCE(f(x_adv), y) + beta * KL(f(x_adv) || f(x)) * (1 - p_y(x))
+
+    where BCE adds a margin term (-log(1 - max_{k!=y} p_adv_k)) to CE, and the KL
+    regularizer is weighted UP on examples the clean model gets wrong/uncertain.
+    Class weights (dataset imbalance) are applied to the CE component only,
+    mirroring the weighted-CE used by PGD-AT and standard training."""
+    logits = model(x)
+    logits_adv = model(x_adv)
+
+    adv_probs = F.softmax(logits_adv, dim=1)
+    top2 = torch.argsort(adv_probs, dim=1)[:, -2:]
+    new_y = torch.where(top2[:, -1] == y, top2[:, -2], top2[:, -1])
+    loss_adv = (
+        F.cross_entropy(logits_adv, y, weight=ce_weight)
+        + F.nll_loss(torch.log(1.0001 - adv_probs + 1e-12), new_y)
+    )
+
+    nat_probs = F.softmax(logits, dim=1)
+    true_probs = torch.gather(nat_probs, 1, y.unsqueeze(1)).squeeze(1)
+    kl = F.kl_div(torch.log(adv_probs + 1e-12), nat_probs, reduction="none").sum(dim=1)
+    loss_robust = (kl * (1.0000001 - true_probs)).mean()
+
+    return loss_adv + beta * loss_robust
+
+
+def _run_custom_at(cfg, defense_cfg, device, logger, train_max_samples=None):
+    """Custom adversarial-training loop shared by PGD-AT (Madry) and MART. The
+    loss/optimizer/scheduler/AMP exactly mirror scripts/train.py, so the ONLY
+    deliberate difference from the standard model is the adversarial objective
+    (PGD-AT: CE on adv examples; MART: boosted CE + weighted KL). Both use the
+    same inner PGD, eps/lr warmup stabilisers, and best-checkpoint selection on
+    val ROBUST balanced accuracy (per-class recall under PGD)."""
     dataset_name = cfg["data"]["dataset"]
     model_name = cfg["model"]["name"]
     seed = cfg.get("seed", 42)
+    variant = defense_cfg["name"]
+    beta = float(defense_cfg.get("beta", 6.0))  # MART only
 
     # AT needs ~3x the memory of standard training; honor the defense batch_size.
     if defense_cfg.get("batch_size"):
@@ -167,13 +202,13 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
     # --- loss / optimizer / scheduler / AMP mirror scripts/train.py ---
     train_cfg = cfg["train"]
     loss_mode = train_cfg.get("class_balance", {}).get("loss", "none")
+    ce_weight = None
     if loss_mode in {"weighted", "weighted_cross_entropy"}:
-        weights = compute_class_weights(data["train"].dataset, num_classes).to(device)
-        criterion = nn.CrossEntropyLoss(weight=weights)
-        logger.info(f"AT loss: weighted CE, weights={weights.detach().cpu().tolist()}")
+        ce_weight = compute_class_weights(data["train"].dataset, num_classes).to(device)
+        logger.info(f"AT loss: weighted CE, weights={ce_weight.detach().cpu().tolist()}")
     else:
-        criterion = nn.CrossEntropyLoss()
         logger.info("AT loss: plain CE")
+    criterion = nn.CrossEntropyLoss(weight=ce_weight)
 
     optimizer = torch.optim.Adam(
         model.parameters(), lr=train_cfg["lr"],
@@ -207,10 +242,11 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
     eps_step = defense_cfg.get("eps_step", 2 / 255)
     max_iter = defense_cfg.get("max_iter", 7)
     logger.info(
-        f"PGD-AT: eps={eps:.5f}, eps_step={eps_step:.5f}, inner_iter={max_iter}, "
+        f"{variant}: eps={eps:.5f}, eps_step={eps_step:.5f}, inner_iter={max_iter}, "
         f"nb_epochs={nb_epochs}, batch_size={cfg['data']['batch_size']}, "
         f"weight_decay={train_cfg.get('weight_decay', 0.0)}, amp={use_amp}({amp_dtype}), "
         f"lr_warmup={lr_warmup_epochs}, eps_warmup={eps_warmup_epochs}"
+        + (f", beta={beta}" if variant == "MART" else "")
     )
     if train_max_samples is not None:
         logger.warning(f"SMOKE MODE: limiting AT to ~{train_max_samples} samples/epoch. "
@@ -234,7 +270,10 @@ def _run_pgd_at(cfg, defense_cfg, device, logger, train_max_samples=None):
             model.train()
             optimizer.zero_grad()
             with autocast("cuda", enabled=use_amp, dtype=amp_dtype):
-                loss = criterion(model(x_adv), labels)     # Madry: train on adv only
+                if variant == "MART":
+                    loss = _mart_loss(model, images, x_adv, labels, beta, ce_weight)
+                else:
+                    loss = criterion(model(x_adv), labels)  # Madry: train on adv only
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()

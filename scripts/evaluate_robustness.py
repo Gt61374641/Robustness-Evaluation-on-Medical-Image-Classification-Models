@@ -134,7 +134,8 @@ def main():
     parser.add_argument("--config", type=str, default="configs/config.yaml")
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--attacks-section", type=str, default="attacks_main",
-                        choices=["attacks_main", "attacks_extended", "attacks_stress", "attacks_fine"])
+                        choices=["attacks_main", "attacks_extended", "attacks_stress",
+                                 "attacks_fine", "attacks_extra"])
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Limit test samples (useful for slow attacks like CW)")
     parser.add_argument("--seed", type=int, default=None, help="Override config seed (for multi-seed runs)")

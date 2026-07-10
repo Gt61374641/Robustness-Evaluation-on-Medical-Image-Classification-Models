@@ -56,7 +56,11 @@ for m in deit_small convnext_tiny; do
     CFG="configs/${CHEST}_${m}.yaml"
     CKPT="checkpoints/${CHEST}_${m}_seed${S}.pth"
     echo "### STD ${CHEST}/${m}/seed${S} ###"
-    if ! python scripts/train.py --config "$CFG" --seed "$S"; then
+    # Idempotent: an existing checkpoint is NOT retrained (train.py would
+    # overwrite it and invalidate finished attack results via the mtime check).
+    if [ -f "$CKPT" ]; then
+      echo "  checkpoint exists -> skip training, top up evals only"
+    elif ! python scripts/train.py --config "$CFG" --seed "$S"; then
       echo "[fail] train ${CHEST}/${m}/seed${S}; skipping its eval."; continue
     fi
     python scripts/evaluate_clean.py      --config "$CFG" --checkpoint "$CKPT" --seed "$S"
@@ -90,9 +94,18 @@ echo "############### 3. PGD-AT completion R34/R101 (3 datasets) ###############
 for DS in $CHEST malaria oct2017; do
   for m in resnet34 resnet101; do
     echo "### PGD-AT ${DS}/${m}/seed42 ###"
-    python scripts/evaluate_defense.py --config "configs/${DS}_${m}.yaml" \
-      --defense PGD-AT --max-samples $MAX --seed 42 \
-      || echo "[fail] PGD-AT ${DS}/${m}"
+    # Idempotent: if the AT checkpoint exists, re-evaluate only (resumes any
+    # missing attacks) instead of retraining from scratch.
+    ATCKPT="checkpoints/${DS}_${m}_seed42_pgd_at.pth"
+    if [ -f "$ATCKPT" ]; then
+      python scripts/evaluate_defense.py --config "configs/${DS}_${m}.yaml" \
+        --defense PGD-AT --checkpoint "$ATCKPT" --max-samples $MAX --seed 42 \
+        || echo "[fail] PGD-AT eval ${DS}/${m}"
+    else
+      python scripts/evaluate_defense.py --config "configs/${DS}_${m}.yaml" \
+        --defense PGD-AT --max-samples $MAX --seed 42 \
+        || echo "[fail] PGD-AT ${DS}/${m}"
+    fi
   done
 done
 
@@ -102,9 +115,16 @@ done
 ########################################################################
 echo "############### 4. chest new-arch PGD-AT ###############"
 for m in deit_small convnext_tiny; do
-  python scripts/evaluate_defense.py --config "configs/${CHEST}_${m}.yaml" \
-    --defense PGD-AT --max-samples $MAX --seed 42 \
-    || echo "[fail] PGD-AT ${CHEST}/${m}"
+  ATCKPT="checkpoints/${CHEST}_${m}_seed42_pgd_at.pth"
+  if [ -f "$ATCKPT" ]; then
+    python scripts/evaluate_defense.py --config "configs/${CHEST}_${m}.yaml" \
+      --defense PGD-AT --checkpoint "$ATCKPT" --max-samples $MAX --seed 42 \
+      || echo "[fail] PGD-AT eval ${CHEST}/${m}"
+  else
+    python scripts/evaluate_defense.py --config "configs/${CHEST}_${m}.yaml" \
+      --defense PGD-AT --max-samples $MAX --seed 42 \
+      || echo "[fail] PGD-AT ${CHEST}/${m}"
+  fi
 done
 
 ########################################################################
@@ -114,9 +134,16 @@ done
 ########################################################################
 echo "############### 5. chest MART (R18/R50/R152) ###############"
 for m in resnet18 resnet50 resnet152; do
-  python scripts/evaluate_defense.py --config "configs/${CHEST}_${m}.yaml" \
-    --defense MART --max-samples $MAX --seed 42 \
-    || echo "[fail] MART ${CHEST}/${m}"
+  ATCKPT="checkpoints/${CHEST}_${m}_seed42_mart.pth"
+  if [ -f "$ATCKPT" ]; then
+    python scripts/evaluate_defense.py --config "configs/${CHEST}_${m}.yaml" \
+      --defense MART --checkpoint "$ATCKPT" --max-samples $MAX --seed 42 \
+      || echo "[fail] MART eval ${CHEST}/${m}"
+  else
+    python scripts/evaluate_defense.py --config "configs/${CHEST}_${m}.yaml" \
+      --defense MART --max-samples $MAX --seed 42 \
+      || echo "[fail] MART ${CHEST}/${m}"
+  fi
 done
 
 ########################################################################

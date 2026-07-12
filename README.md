@@ -55,9 +55,8 @@ python scripts/evaluate_defense.py --config configs/chest_xray_pneumonia_resnet5
 # signature figures (after the ladder is evaluated)
 python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --seed seed42
 
-# or drive everything
-run_pipeline.bat chest_xray_pneumonia resnet18
-run_all_models.bat
+# or drive a whole dataset end-to-end (train -> clean -> robustness -> figures)
+bash run_dataset.sh chest_xray_pneumonia
 ```
 
 See `../MEDICAL_ROBUSTNESS_PLAN.md` (project root) for the full plan, experiment

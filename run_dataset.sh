@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Standard pipeline (train -> clean -> robustness main+fine) for ALL 5 ResNets on
-# one dataset. Linux equivalent of run_dataset.bat. Adversarial training is run
-# separately via scripts/evaluate_defense.py.
+# one dataset. Adversarial training is run separately via
+# scripts/evaluate_defense.py.
 #
 #   Usage:  bash run_dataset.sh malaria
 #           bash run_dataset.sh oct2017

@@ -303,41 +303,47 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 
 ---
 
-## 8. 状态与待办(更新于 2026-07-01,extras 收尾后)
+## 8. 状态与待办(更新于 **2026-07-12**,扩展批次回传 + 主图现代化后)
 
 **已完成:**
-- chest_xray / malaria / oct2017 三数据集**标准训练 + ε 扫描**,**三数据集现均 3-seed(42/43/44)** → H1 误差带完整。
-- **AT 代表模型 R18/R50/R152 + 强评估**(三数据集),统一 warmup 协议:
-  - ✅ **chest R152** 全 ε 评估(clean 0.819 / @8 0.649,最强);**chest R50 warmup 重跑完成**(seed42/43,@8 0.506/0.514,与旧值一致→结论稳健)。
-  - ❌ 确认塌缩(warmup 仍救不回,已写成发现):**R18×三数据集(PGD-AT)**、**oct R152**。
-- ✅ **TRADES 第二方法消融(chest R18/R50/R152)**:H2 跨方法复现;**TRADES 救回 PGD-AT 塌缩的 R18**(见 §5.3c)。
-- ✅ **可解释性扩到三数据集**:malaria/oct Grad-CAM(标准 + 收敛的 AT)+ 三数据集汇总拼图。
-- ✅ **图/表全部重生成**:H1/H2 combined(3-seed 带)、sci_defense(含 TRADES)、paper_tables(table5/6/7 含 TRADES)、gradcam 汇总。修复 defense 图/表攻击名不匹配 bug(§6.6)。
+- chest_xray / malaria / oct2017 三数据集**标准训练 + ε 扫描**,**三数据集现均 3-seed(42/43/44)** → H1 误差带完整、非单调 U 形三数据集稳健复现。
+- **AT 完整 5 模型阶梯 × 3 数据集**(扩展批次补全 R34/R101),统一 warmup 协议 + PGD-50/5重启强评估:
+  - ✅ 稳定成功:chest R50/R152、malaria R50/R101/R152、oct R50。R50→R152 robust 单调上升。
+  - ❌ 确认塌缩(作为发现):R18/R34×三数据集、R101×{chest,oct}、oct R152、新架构 DeiT-S/ConvNeXt-T。详见 §5.3b / §5.3b-2。
+- ✅ **三方法 AT 消融(chest R18/R50/R152)**:PGD-AT / TRADES / **MART**;TRADES/MART 均救回 PGD-AT 塌缩的 R18(见 §5.3c)。
+- ✅ **攻击方法对比**:chest × 7 模型 × CW/DeepFool/AutoAttack/Square(§attacks_extra)。
+- ✅ **新架构**:DeiT-S / ConvNeXt-T 标准训练(3-seed)+ 攻击评估 + AT(均塌缩)。
+- ✅ **可解释性扩到三数据集**:malaria/oct + convnext Grad-CAM + 三数据集汇总拼图。
+- ✅ **主图现代化(双后端)**:H1×3 / defense_methods / attack_methods + H2 5 模型阶梯,Python + R,塌缩显式标注(见 §5.4b)。
 
 **待办(下次再做):**
-- [ ] (可选)再救一次 **oct R152**:更强稳定化(eps_warmup=8 / lr_warmup=5 / nb_epochs=30 / LR 减半 / 梯度裁剪),独立一次性重跑。
-- [ ] (可选)malaria/oct 的**决策边界**图 + `generate_complexity_figures.py` 三数据集刷新(complexity 曲线/CSV)。
-- [ ] (可选)malaria/oct 的 TRADES 消融、chest AT 多 seed(R152 seed43)。
-- [ ] (可选)`generate_clean_sci_figures.py` 刷新其余模型的 clean 诊断图/表(需 torch + checkpoint)。
-- [ ] 论文 **Results / Discussion 写作**。
+- [ ] 论文 **Results / Discussion 写作**(最高优先)。
+- [ ] **paper_tables 重生**:防御表扩三方法(+MART)、新增攻击方法对比表 —— 现停在 7/1 的 2 方法旧版,与新图不一致。
+- [ ] **AT 补多 seed**:PGD-AT 除 chest R50(seed42/43)外几乎全为单 seed42,TRADES/MART 全单 seed → 关键点(chest/malaria R50/R152、三方法)补 seed43/44 以对齐 H1 的统计强度。
+- [ ] (可选)再救一次 **oct R152 / 代表性塌缩点**:更强稳定化(eps_warmup=8 / lr_warmup=5 / nb_epochs=30 / LR 减半 / 梯度裁剪),区分"本质难 AT" vs "协议不够稳"。
+- [ ] (可选)malaria/oct 的**决策边界**图;malaria/oct 的 TRADES 消融。
+- [ ] (可选)`sci_defense` 重生为三方法;`generate_clean_sci_figures.py` 新架构 clean 诊断(需 torch + checkpoint)。
 
 **复现要点(本轮新增):** AT 权重在 `checkpoints/{dataset}_{model}_seed42[_43]_pgd_at.pth`(共 11 个,已从云端下载到本地);
 塌缩判定依据 = 运行时 `results/.../defense_PGD-AT/seedN/config.yaml` 快照(确认 warmup 已启用)+ `evaluate_defense.log`
 
 ---
 
-## 9. 扩展批次(2026-07-10 定稿,代码就绪,待云端跑:`run_extension.sh`)
+## 9. 扩展批次(2026-07-10 定稿,**2026-07-12 云端跑完并回传本地**:`run_extension.sh` + `backfill_resnets.sh` + `sec45_parallel.sh`)
 
 **范围决定:chest(主)全做;malaria/oct 只补 R34/R101 的 PGD-AT。**
 
 | # | 内容 | 明细 | 状态 |
 |---|---|---|---|
-| 1 | 新架构标准训练 | chest × {deit_small, convnext_tiny} × seed{42,43,44},train→clean→鲁棒(main+fine) | ⬜ |
-| 2 | 攻击方法对比 | chest × 7 模型 × `attacks_extra`(CW/DeepFool/AutoAttack/Square),seed42 | ⬜ |
-| 3 | AT 补全 | {chest, malaria, oct} × {R34, R101} × PGD-AT + 强评估 → **5 模型 AT 全覆盖** | ⬜ |
-| 4 | 新架构 AT | chest × {deit_small, convnext_tiny} × PGD-AT | ⬜ |
-| 5 | MART | chest × {R18, R50, R152}(与 TRADES 三元组对齐)→ 三方法对比 | ⬜ |
-| 6 | Grad-CAM | convnext_tiny 标准+AT(deit 跳过,ViT CAM 局限) | ⬜ |
+| 1 | 新架构标准训练 | chest × {deit_small, convnext_tiny} × seed{42,43,44},train→clean→鲁棒(main+fine) | ✅ |
+| 2 | 攻击方法对比 | chest × 7 模型 × `attacks_extra`(CW/DeepFool/AutoAttack/Square),seed42 | ✅ |
+| 3 | AT 补全 | {chest, malaria, oct} × {R34, R101} × PGD-AT + 强评估 → **5 模型 AT 全覆盖** | ✅(R34 三处塌、R101 chest+oct 塌,详见 §5.3b) |
+| 4 | 新架构 AT | chest × {deit_small, convnext_tiny} × PGD-AT | ✅(两者均塌缩,详见 §5.3b-2) |
+| 5 | MART | chest × {R18, R50, R152}(与 TRADES 三元组对齐)→ 三方法对比 | ✅ |
+| 6 | Grad-CAM | convnext_tiny 标准+AT(deit 跳过,ViT CAM 局限) | ✅(AT 版因塌缩恒定输出→面板空,已注明) |
+
+> **全部结果 JSON + Grad-CAM PNG 已回传本地并逐项校验(15 defense + 7 attacks_extra + 新架构齐全)。**
+> 出图:主图已现代化为双后端(见 §5.4b)。**尚未做**:paper_tables 重生为三方法+攻击对比表(仍停在 7/1 的 2 方法旧版)。
 
 **本批次代码改动(已完成并本地校验语法/配置):**
 - `src/models/model_factory.py`:+`deit_small`(ViT-S/16, IN1k-only)、+`convnext_tiny`。
@@ -362,7 +368,7 @@ AT 模型加 AutoAttack 而旧结果没有,同一张表里会混两种协议;要
 
 ---
 
-## 9. 复现要点
+## 10. 复现要点
 
 - 种子 42(主)/43/44(多 seed);确定性划分;每次跑 `save_config_snapshot`。
 - 结果路径 `results/{dataset}/{model}/{experiment}/seed{N}/`;checkpoint `checkpoints/{dataset}_{model}_seed{N}[_pgd_at].pth`。

@@ -146,9 +146,11 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 
 ### 4.5 批处理
 
-- `run_pipeline.bat <dataset> <model>` —— 单模型 train→clean→鲁棒(main+fine)→GradCAM。
-- `run_all_models.bat` —— 三数据集 × 5 模型 + AT + 出图。
-- `finish_chest_xray.bat` —— chest_xray 收尾(补缺 + seed43/44 多 seed + AT + 决策边界 + 出图)。
+> 早期的 Windows `.bat` 批处理(run_pipeline/run_all_models/finish_chest_xray 等)已于
+> 2026-07-12 移除,统一改用 AutoDL 的 Linux `.sh` 脚本(见下)。
+
+- `bash run_dataset.sh <dataset>` —— 单数据集 train→clean→鲁棒(main+fine)→AT→出图(`run_dataset.bat` 的 Linux 等价)。
+- `bash run_extension.sh` / `bash run_extras.sh` —— 扩展批次(新架构、attacks_extra、AT 阶梯、MART、打包)。
 
 ---
 
@@ -208,15 +210,30 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 2. **复杂度单调有利**:clean(0.80→0.82)与 robust@8(0.527→0.649)都随复杂度上升,**R152 最强** → **印证范文 AT 结论**(最复杂者 AT 后最鲁棒)。
 3. **最小模型 R18 塌缩**:统一 warmup 协议下两 seed 均塌(clean≈0.62、@8=0)。旧的非统一循环下 R18 曾训成(0.622@8),说明 **R18 处于 AT 可训性边缘、对协议高度敏感** → 作为发现写入(与"复杂度有利"一致)。
 
-### 5.3b 跨数据集 AT 汇总(@8/255,full robust acc;最终验证版)
+### 5.3b 跨数据集 AT 汇总(完整 5 模型阶梯;@8/255,full robust acc;扩展批次 2026-07-12 补全 R34/R101)
+
+塌缩判据:PGD@8 full robust acc ≈ 0 **或** clean 预测坍缩为单一类(clean acc ≈ 多数类占比,pred_distribution 恒定输出一类)。
 
 | 模型 | chest clean/@8 | malaria clean/@8 | oct clean/@8 | 跨数据集 |
 |---|---|---|---|---|
-| ResNet-18 | 0.62 / **0.00** ❌ | 0.46 / **0.00** ❌ | 0.41 / **0.16** ⚠️弱 | 最小模型普遍难 AT |
-| ResNet-50 | 0.80 / **0.53** ✅ | 0.96 / **0.90** ✅ | 0.74 / **0.64** ✅ | 三处都成功 |
+| ResNet-18  | 0.61 / **0.00** ❌塌 | 0.46 / **0.00** ❌塌 | 0.41 / **0.16** ⚠️弱 | 最小模型普遍难 AT |
+| ResNet-34  | 0.61 / **0.00** ❌塌 | 0.46 / **0.00** ❌塌 | 0.25 / **0.00** ❌塌 | **三处均塌**(新增) |
+| ResNet-50  | 0.78 / **0.51** ✅ | 0.96 / **0.90** ✅ | 0.74 / **0.64** ✅ | 三处都成功 |
+| ResNet-101 | 0.38 / **0.00** ❌塌 | 0.96 / **0.89** ✅ | 0.25 / **0.00** ❌塌 | **仅 malaria 成功**(新增) |
 | ResNet-152 | 0.82 / **0.65** ✅ | 0.96 / **0.91** ✅ | 0.25 / **0.03** ❌塌 | chest/malaria 最强;OCT 塌 |
 
-> H2 由 **chest(R50+R152)+ malaria(R50+R152)** 稳稳支撑。**R18 三数据集一致塌缩**、**oct R152 塌缩**(最难 4 类任务 + 最深网络发散到平凡解,train loss 全程钉在 ln4=1.386)→ 均作为诚实发现写入,而非 bug(已用运行时 config 快照 + 逐 epoch 日志确认 warmup 已启用仍塌)。
+> **完整阶梯下 H2 的图景比 3 点版更复杂,需诚实修正措辞。** 稳定成功的核心证据仍是 **R50 与 R152 在 chest+malaria**(且 R50→R152 robust 单调上升 → "复杂度有利"在**成功训练的点上**成立)。但补全 R34/R101 后:
+> - **AT 可训性对容量非单调、且高度依赖优化稳定性**:R34 三数据集全塌;R101 在 chest/oct 塌却在 malaria 成功(0.89)。→ 不能再说"复杂度单调有利",应表述为"**在能稳定训成 AT 的模型中,更大容量鲁棒性更强;但 AT 收敛本身不随容量单调,存在对优化敏感的塌缩点**"。
+> - **塌缩集中在:所有 R18/R34、chest/oct 的 R101、oct 的 R152**。oct(最难 4 类)最易塌;malaria(最易 2 类)最稳(仅 R18/R34 塌)。均作为诚实发现写入,非 bug(运行时 config 快照 + 逐 epoch 日志确认 warmup 已启用仍塌,train loss 钉在 ln(类数))。
+
+### 5.3b-2 新架构 PGD-AT(chest,seed42;扩展批次)
+
+| 模型 | AT-clean | PGD@8 | 状态 |
+|---|---|---|---|
+| DeiT-S | 0.375 | **0.263** | ❌塌缩(clean 恒输出 NORMAL=多数类补集,robust 虚高)|
+| ConvNeXt-T | 0.625 | **0.006** | ❌塌缩(clean 恒输出 PNEUMONIA=多数类)|
+
+> 两个新架构在与 ResNet 相同的 warmup 协议下 PGD-AT **均塌缩为平凡分类器**。→ **修正**:此前 Grad-CAM 环节记录的"convnext_tiny AT 模型 PGD 零成功"并非鲁棒性强,而是**恒定输出导致预测不可动** → AT 版 Grad-CAM 面板为空应按塌缩解释,不可当鲁棒性证据。DeiT-S 的 @8=0.263 是恒定预测下的虚高值(所有样本预测同一类,该类占比使 full robust acc 非零),非真实鲁棒。
 
 ### 5.3c 第二方法消融:TRADES vs PGD-AT(chest,seed42,PGD-50+5重启,full robust acc)
 
@@ -239,7 +256,20 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
   - malaria:标准 R18/R152 + AT R50/R152(`_at`);oct:标准 R18/R152 + AT R50(`_at`)。**仅收敛的 AT 模型出图**(塌缩模型的显著图无意义,故略)。
   - **汇总拼图(新)**:`figures/gradcam/{chest_xray_pneumonia,malaria,oct2017}_gradcam_summary.{png,pdf}` —— 行=模型、列=样本,一张图对比复杂度与标准/AT 的注意力迁移(脚本 `scripts/generate_gradcam_summary.py`,只读已生成的 PNG,无需 torch)。
 - **决策边界 t-SNE+KNN**:R18 vs R152,clean(o)按类聚簇、adversarial(×)被推过边界(`figures/decision_boundary/chest_xray_pneumonia/`,目前仅 chest)。
-- **H1 跨数据集误差带(新)**:`figures/combined/H1_*.{png,pdf}` 现在**三数据集(chest/malaria/oct)均为 seed42/43/44 三-seed mean±std**,误差带完整(此前 malaria/oct 仅 seed42、无带)。
+- **H1 跨数据集误差带**:`figures/main/H1_pgd_across_datasets.*`(及 `_r`)现在**三数据集(chest/malaria/oct)均为 seed42/43/44 三-seed mean±std**,误差带完整(此前 malaria/oct 仅 seed42、无带)。
+
+### 5.4b 论文主图现代化(2026-07-12,双后端 + 塌缩标注)
+
+> 用扩展批次完整数据重生了全部主图,统一 nature-figure 方法(单一克制配色、可编辑 SVG、
+> **红叉显式标注塌缩点**),并**同时出 Python(matplotlib)与 R(ggplot2)两版**供选。
+> 流水线:`scripts/extract_figure_data.py` → `figures/data/*.json`(唯一数据源)→
+> `scripts/generate_main_figures.{py,R}`(H1×3 / defense / attack)+
+> `scripts/generate_at_ladder_figure.{py,R}`(H2 5 模型阶梯)。产物在 `figures/main/`
+> (Python=裸名,R=`_r` 后缀)与 `figures/at_ladder/`。映射与被取代的旧图见
+> `figures/main/README.md`。新增 `attack_methods`(CW/DeepFool 的 L2 + AutoAttack/Square
+> robust@8,7 模型)此前无图。旧 `combined/`、`sci_defense/`、`complexity/*_at_comparison`
+> 已被取代(3 模型/无塌缩标注):`combined/`、`complexity/*_at_comparison`、旧
+> `generate_combined_figures.py` 已删除;`sci_defense/` 保留(含唯一的逐模型诊断图,仍为 2 方法旧数据)。
 
 ### 5.5 一句话总结
 
@@ -263,9 +293,9 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 
 - **结果 JSON**:`results/{dataset}/{model}/{clean,robustness,defense_PGD-AT,defense_TRADES}/seed{N}/*.json`(三数据集;chest 含 TRADES)
 - **图**:
-  - `figures/complexity/chest_xray_pneumonia/`(FGSM/PGD 曲线带 3-seed 带、AT 曲线、AT 对比柱、`complexity_summary_table.csv`、`at_comparison_table.csv`)
-  - `figures/combined/H1_*.{png,pdf}`、`H2_*`、`paper_style_fig1`(**H1 三数据集均 3-seed 误差带**)
-  - `figures/sci_defense/chest_xray_pneumonia/{resnet18,50,152}/`(Standard/PGD-AT/TRADES 对比,含 `sci_defense_summary_metrics.csv`)
+  - `figures/main/`(现代化主图,Python + R 双后端:H1×3 / defense_methods / attack_methods;H2 在 `figures/at_ladder/`;见 `figures/main/README.md`)
+  - `figures/complexity/chest_xray_pneumonia/`(FGSM/PGD 曲线带 3-seed 带、AT 曲线、`complexity_summary_table.csv`)
+  - `figures/sci_defense/chest_xray_pneumonia/{resnet18,50,152}/`(逐模型防御诊断:clean-robust 权衡/逐类 ASR/PGD 曲线,含 `sci_defense_summary_metrics.csv`;仍为 2 方法)
   - `figures/paper_tables/chest_xray_pneumonia/resnet50/table1~7`(table5/6/7 已含 TRADES)
   - `figures/gradcam/`(三数据集 + `{dataset}_gradcam_summary.{png,pdf}` 汇总)、`figures/decision_boundary/`
 - **checkpoints**:`checkpoints/chest_xray_pneumonia_{model}_seed{42,43,44}.pth`(标准)+ `..._seed42_pgd_at.pth`(AT:18/50/152)

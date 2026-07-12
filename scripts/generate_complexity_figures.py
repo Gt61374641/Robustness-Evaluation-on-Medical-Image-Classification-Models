@@ -34,7 +34,6 @@ from src.utils.plot_style import (
     apply_publication_style,
     add_panel_label,
     finalize_figure,
-    make_grouped_bar,
     make_trend,
     PALETTE,
 )
@@ -284,60 +283,6 @@ def plot_at_curves(results_dir, dataset, models, seed, out_dir):
     return finalize_figure(fig, out_dir / "complexity_at_curves", pad=1.0)
 
 
-def plot_at_comparison(results_dir, dataset, models, seed, table_eps_255, out_dir):
-    """Standard vs PGD-AT robustness at the headline eps, per complexity.
-
-    Includes AutoAttack (gold-standard) for the defended model when available.
-    """
-    std_vals, at_vals, aa_vals, cats = [], [], [], []
-    for model in models:
-        std_path = _find_results(results_dir / dataset / model / "robustness" / seed,
-                                 "robustness_attacks_main")
-        at_path = _find_results(results_dir / dataset / model / "defense_PGD-AT" / seed,
-                                "defense_results")
-        if std_path is None or at_path is None:
-            continue
-        at_json = load_json(at_path)
-        std = _value_at(load_json(std_path), "PGD", table_eps_255, "full_robust_accuracy")
-        at = _value_at(at_json, "PGD", table_eps_255, "full_robust_accuracy")          # PGD50-5restart
-        aa = _value_at(at_json, "AutoAttack", table_eps_255, "full_robust_accuracy")   # may be None
-        if std is None or at is None:
-            continue
-        cats.append(DISPLAY.get(model, model))
-        std_vals.append(std)
-        at_vals.append(at)
-        aa_vals.append(aa)
-
-    if not cats:
-        return [], None
-
-    have_aa = any(v is not None for v in aa_vals)
-    fig, ax = plt.subplots(figsize=(3.8, 2.6))
-    series = [np.array(std_vals, dtype=float), np.array(at_vals, dtype=float)]
-    labels = ["Standard", "PGD-AT (PGD-50)"]
-    colors = [PALETTE["neutral_mid"], PALETTE["blue_main"]]
-    if have_aa:
-        series.append(np.array([np.nan if v is None else v for v in aa_vals], dtype=float))
-        labels.append("PGD-AT (AutoAttack)")
-        colors.append(PALETTE["red_strong"])
-    make_grouped_bar(ax, cats, series, labels, ylabel="Full robust accuracy",
-                     colors=colors, bar_width=0.78)
-    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
-    ax.set_ylim(0, 1.03)
-    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
-    ax.legend(fontsize=5, loc="upper left")
-    add_panel_label(ax, "c")
-    ax.set_title(f"Standard vs PGD-AT @ {table_eps_255}/255")
-    paths = finalize_figure(fig, out_dir / "complexity_at_comparison", pad=1.0)
-
-    df = pd.DataFrame({"model": cats, "standard_pgd_full_robust": std_vals,
-                       "pgd_at_pgd50_full_robust": at_vals,
-                       "pgd_at_autoattack_full_robust": aa_vals})
-    csv = out_dir / "at_comparison_table.csv"
-    df.to_csv(csv, index=False)
-    return paths, csv
-
-
 def main():
     parser = argparse.ArgumentParser(description="Complexity-vs-robustness figures")
     parser.add_argument("--results-dir", type=Path, default=Path("results"))
@@ -349,9 +294,6 @@ def main():
     parser.add_argument("--table-eps", type=float, default=0.1,
                         help="Headline eps in /255 (float) for the STANDARD complexity table. Default "
                              "0.1 sits in the discriminating fine regime.")
-    parser.add_argument("--at-eps", type=float, default=8.0,
-                        help="Headline eps in /255 for the AT comparison (where adversarial training's "
-                             "benefit shows and standard models are already ~0). Default 8.")
     args = parser.parse_args()
 
     apply_publication_style()
@@ -386,16 +328,12 @@ def main():
     outputs.append(table_csv)
     print(df.to_string(index=False))
 
-    # AT comparison uses the primary (first) seed only.
+    # AT robustness curves use the primary (first) seed only. The old
+    # standard-vs-AT comparison bar (complexity_at_comparison) was retired
+    # 2026-07-12 -> superseded by the collapse-aware figures/main/defense_methods
+    # and figures/at_ladder (5-model ladder with explicit collapse marking).
     primary = args.seeds[0]
     outputs += plot_at_curves(args.results_dir, args.dataset, args.models, primary, out_dir)
-    at_paths, at_csv = plot_at_comparison(args.results_dir, args.dataset, args.models,
-                                          primary, args.at_eps, out_dir)
-    outputs += at_paths
-    if at_csv:
-        outputs.append(at_csv)
-    else:
-        print("[info] no PGD-AT results yet; skipped standard-vs-AT comparison.")
 
     print(f"\nGenerated {len(outputs)} files:")
     for p in outputs:

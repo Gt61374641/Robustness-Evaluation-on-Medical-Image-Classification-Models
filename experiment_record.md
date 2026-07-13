@@ -296,7 +296,7 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
   - `figures/main/`(现代化主图,Python + R 双后端:H1×3 / defense_methods / attack_methods;H2 在 `figures/at_ladder/`;见 `figures/main/README.md`)
   - `figures/complexity/chest_xray_pneumonia/`(FGSM/PGD 曲线带 3-seed 带、AT 曲线、`complexity_summary_table.csv`)
   - `figures/sci_defense/chest_xray_pneumonia/{resnet18,50,152}/`(逐模型防御诊断:clean-robust 权衡/逐类 ASR/PGD 曲线,含 `sci_defense_summary_metrics.csv`;仍为 2 方法)
-  - `figures/paper_tables/chest_xray_pneumonia/resnet50/table1~7`(table5/6/7 已含 TRADES)
+  - `figures/paper_tables/`:逐模型 clean/攻击 `resnet50/table1~4`(`generate_paper_tables.py`);跨模型对比表 `chest_xray_pneumonia/table5_defense_methods`(四法 Standard/PGD-AT/TRADES/MART)、`table6_attack_methods`(7 模型 × CW/DeepFool L2 + AA/Square@8)、`table8_h2_at_ladder`(5 模型 × 3 数据集)由 `generate_comparison_tables.py` 从 `figures/data/*.json` 生成,与主图同源。旧 2 方法 table5/6/7 已删。
   - `figures/gradcam/`(三数据集 + `{dataset}_gradcam_summary.{png,pdf}` 汇总)、`figures/decision_boundary/`
 - **checkpoints**:`checkpoints/chest_xray_pneumonia_{model}_seed{42,43,44}.pth`(标准)+ `..._seed42_pgd_at.pth`(AT:18/50/152)
 - **配置**:`configs/{dataset}_base.yaml` + 生成的 `configs/{dataset}_{model}.yaml`(15 份)
@@ -318,7 +318,7 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 
 **待办(下次再做):**
 - [ ] 论文 **Results / Discussion 写作**(最高优先)。
-- [ ] **paper_tables 重生**:防御表扩三方法(+MART)、新增攻击方法对比表 —— 现停在 7/1 的 2 方法旧版,与新图不一致。
+- [x] ~~**paper_tables 重生**:防御表扩三方法(+MART)、新增攻击方法对比表~~ **已完成(2026-07-13)**:`generate_comparison_tables.py` 从 `figures/data/*.json` 出 table5(四法防御)/table6(攻击对比)/table8(H2 阶梯),与主图同源;旧 2 方法表已删。
 - [ ] **AT 补多 seed**:PGD-AT 除 chest R50(seed42/43)外几乎全为单 seed42,TRADES/MART 全单 seed → 关键点(chest/malaria R50/R152、三方法)补 seed43/44 以对齐 H1 的统计强度。
 - [ ] (可选)再救一次 **oct R152 / 代表性塌缩点**:更强稳定化(eps_warmup=8 / lr_warmup=5 / nb_epochs=30 / LR 减半 / 梯度裁剪),区分"本质难 AT" vs "协议不够稳"。
 - [ ] (可选)malaria/oct 的**决策边界**图;malaria/oct 的 TRADES 消融。
@@ -343,7 +343,7 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 | 6 | Grad-CAM | convnext_tiny 标准+AT(deit 跳过,ViT CAM 局限) | ✅(AT 版因塌缩恒定输出→面板空,已注明) |
 
 > **全部结果 JSON + Grad-CAM PNG 已回传本地并逐项校验(15 defense + 7 attacks_extra + 新架构齐全)。**
-> 出图:主图已现代化为双后端(见 §5.4b)。**尚未做**:paper_tables 重生为三方法+攻击对比表(仍停在 7/1 的 2 方法旧版)。
+> 出图:主图已现代化为双后端(见 §5.4b)。paper_tables 已重生为三方法+攻击对比表(`generate_comparison_tables.py`,2026-07-13)。
 
 **本批次代码改动(已完成并本地校验语法/配置):**
 - `src/models/model_factory.py`:+`deit_small`(ViT-S/16, IN1k-only)、+`convnext_tiny`。

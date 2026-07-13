@@ -112,17 +112,19 @@ def fixed_eps_ushape(target=0.1):
 
 
 def _defense_clean_rob8(ds, model, defense, seed="seed42"):
-    """(clean_defended, robust@8 full, collapsed) for a defense JSON, or None."""
+    """(clean_defended, robust@8 full/conditional, asr, collapsed) for a defense JSON."""
     f = ROOT / "results" / ds / model / f"defense_{defense}" / seed / "defense_results_max1024.json"
     if not f.exists():
         return None
     r = json.load(open(f))
     clean = r.get("clean_accuracy_defended")
-    rob8 = None
+    rob8 = rob8_cond = asr8 = None
     for k, v in r.items():
         if k.startswith("PGD") and isinstance(v, dict) and "robust_accuracy" in v:
             if abs((eps255(k) or 0) - 8) < 0.5:
                 rob8 = v["robust_accuracy"]["full_robust_accuracy"]
+                rob8_cond = v["robust_accuracy"].get("conditional_robust_accuracy")
+                asr8 = v.get("asr")
     # collapse: constant clean prediction OR ~0 robust
     kk = [k for k in r if k.startswith("PGD")]
     constant = False
@@ -130,7 +132,8 @@ def _defense_clean_rob8(ds, model, defense, seed="seed42"):
         fr = [x["fraction"] for x in r[kk[0]]["pred_distribution"]["clean"].values()]
         constant = max(fr) >= 0.99
     collapsed = bool(constant or (rob8 is not None and rob8 < 0.02))
-    return {"clean": clean, "rob8": rob8, "collapsed": collapsed}
+    return {"clean": clean, "rob8": rob8, "rob8_cond": rob8_cond, "asr8": asr8,
+            "collapsed": collapsed}
 
 
 def _standard_clean_rob8(ds, model, seed="seed42"):
@@ -141,7 +144,7 @@ def _standard_clean_rob8(ds, model, seed="seed42"):
         cj = json.load(open(cf))
         clean = cj.get("accuracy") or cj.get("clean_accuracy") or \
             cj.get("metrics", {}).get("accuracy")
-    rob8 = None
+    rob8 = rob8_cond = asr8 = None
     for sec in ("main", "fine"):
         r = _rob_json(ds, model, seed, sec)
         if not r:
@@ -150,7 +153,10 @@ def _standard_clean_rob8(ds, model, seed="seed42"):
             if k.startswith("PGD") and isinstance(v, dict) and "robust_accuracy" in v:
                 if abs((eps255(k) or 0) - 8) < 0.5:
                     rob8 = v["robust_accuracy"]["full_robust_accuracy"]
-    return {"clean": clean, "rob8": rob8, "collapsed": False}
+                    rob8_cond = v["robust_accuracy"].get("conditional_robust_accuracy")
+                    asr8 = v.get("asr")
+    return {"clean": clean, "rob8": rob8, "rob8_cond": rob8_cond, "asr8": asr8,
+            "collapsed": False}
 
 
 def defense_methods():

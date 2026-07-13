@@ -1,4 +1,11 @@
-"""Generate final paper tables from clean, robustness, and defense results."""
+"""Generate per-model clean + attack paper tables (table1-4).
+
+Defense-method and attack-method COMPARISON tables (three-way PGD-AT/TRADES/MART,
+7-model attack comparison, 5-model H2 AT ladder) moved to
+scripts/generate_comparison_tables.py, which reads the shared figures/data/*.json
+so tables stay consistent with figures/main/. The old 2-method defense tables
+(table5/6/7 from sci_defense CSVs) were retired 2026-07-13.
+"""
 
 import argparse
 import json
@@ -103,47 +110,6 @@ def attack_sweep_table(attack_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFr
     return raw, formatted
 
 
-def defense_pgd8_table(defense_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    raw = defense_df[defense_df["label"] == "PGD 8/255"].copy()
-    asr_columns = sorted(col for col in raw.columns if col.startswith("asr_"))
-    columns = [
-        "method",
-        "category",
-        "clean_accuracy",
-        "robust_accuracy",
-        "asr",
-        "accuracy_drop",
-    ] + asr_columns
-    raw = raw[columns].copy()
-    formatted = raw.copy()
-    for col in ["clean_accuracy", "robust_accuracy", "asr", "accuracy_drop", *asr_columns]:
-        formatted[col] = formatted[col].map(pct)
-    return raw, formatted
-
-
-def defense_deepfool_table(defense_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    raw = defense_df[defense_df["attack"] == "DeepFool"].copy()
-    columns = ["method", "category", "clean_accuracy", "robust_accuracy", "asr", "accuracy_drop"]
-    raw = raw[columns].copy()
-    formatted = raw.copy()
-    for col in ["clean_accuracy", "robust_accuracy", "asr", "accuracy_drop"]:
-        formatted[col] = formatted[col].map(pct)
-    return raw, formatted
-
-
-def per_class_vulnerability_table(defense_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    raw = defense_df[defense_df["label"] == "PGD 8/255"].copy()
-    metric_columns = []
-    for prefix in ("clean_accuracy_", "asr_", "robust_accuracy_"):
-        metric_columns.extend(sorted(col for col in raw.columns if col.startswith(prefix)))
-    columns = ["method"] + metric_columns
-    raw = raw[columns].copy()
-    formatted = raw.copy()
-    for col in metric_columns:
-        formatted[col] = formatted[col].map(pct)
-    return raw, formatted
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate final dissertation paper tables")
     parser.add_argument("--figures-dir", type=Path, default=Path("figures"))
@@ -154,13 +120,11 @@ def main() -> None:
 
     clean_dir = args.figures_dir / "sci_clean" / args.dataset / args.model
     attack_dir = args.figures_dir / "sci" / args.dataset / args.model
-    defense_dir = args.figures_dir / "sci_defense" / args.dataset / args.model
     out_dir = args.output_dir / args.dataset / args.model
 
     clean_summary = read_json(clean_dir / "clean_diagnostics_summary.json")
     class_metrics = pd.read_csv(clean_dir / "clean_classification_metrics.csv")
     attack_df = pd.read_csv(attack_dir / "sci_summary_metrics.csv")
-    defense_df = pd.read_csv(defense_dir / "sci_defense_summary_metrics.csv")
 
     outputs = []
     for name, (raw, formatted) in {
@@ -168,15 +132,13 @@ def main() -> None:
         "table2_clean_class_metrics": clean_class_table(class_metrics),
         "table3_representative_attacks": representative_attack_table(attack_df),
         "table4_attack_epsilon_sweep": attack_sweep_table(attack_df),
-        "table5_defense_pgd8_comparison": defense_pgd8_table(defense_df),
-        "table6_defense_deepfool_comparison": defense_deepfool_table(defense_df),
-        "table7_per_class_vulnerability_pgd8": per_class_vulnerability_table(defense_df),
     }.items():
         outputs.extend(save_table(raw, formatted, out_dir, name))
 
-    print(f"Generated {len(outputs)} paper table files:")
+    print(f"Generated {len(outputs)} per-model paper table files:")
     for path in outputs:
         print(path)
+    print("(defense/attack comparison tables -> scripts/generate_comparison_tables.py)")
 
 
 if __name__ == "__main__":

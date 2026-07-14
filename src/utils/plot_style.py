@@ -109,6 +109,7 @@ METHOD_COLORS = {
     "Standard":         PALETTE["neutral_dark"],
     "PGD-AT":           PALETTE["blue_main"],
     "TRADES":           PALETTE["blue_secondary"],
+    "MART":             PALETTE["green_3"],
     "SpatialSmoothing": PALETTE["teal"],
     "JpegCompression":  PALETTE["violet"],
     "FeatureSqueezing": PALETTE["gold"],

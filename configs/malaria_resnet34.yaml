@@ -67,6 +67,32 @@ defenses_main:
     eps_warmup_epochs: 5        # ramp perturbation budget over first epochs (AT stabiliser)
     lr_warmup_epochs: 3         # ramp LR over first epochs (AT stabiliser)
     batch_size: 32
+  - name: "TRADES"              # second AT method (cross-dataset ablation, mirrors chest)
+    eps: 0.031373
+    eps_step: 0.007843
+    nb_epochs: 15
+    beta: 6.0
+    batch_size: 16
+    max_iter: 7
+  - name: "MART"                # third AT method (Wang et al. 2020); shares custom loop
+    eps: 0.031373
+    eps_step: 0.007843
+    max_iter: 7
+    nb_epochs: 15
+    beta: 6.0
+    eps_warmup_epochs: 5
+    lr_warmup_epochs: 3
+    batch_size: 16
+  - name: "PGD-AT-rescue"       # stronger stabilisers for collapsed points (see chest base)
+    eps: 0.031373
+    eps_step: 0.007843
+    max_iter: 7
+    nb_epochs: 30
+    eps_warmup_epochs: 8
+    lr_warmup_epochs: 5
+    lr: 5.0e-5
+    grad_clip: 1.0
+    batch_size: 32
 
 defense_eval:
   pgd_eval:

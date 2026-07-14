@@ -45,7 +45,7 @@ from src.evaluation.subset import get_attack_subset
 from scripts.evaluate_robustness import collect_test_data, get_predictions_and_confidences
 
 
-MAIN_DEFENSES = {"PGD-AT", "TRADES", "MART"}
+MAIN_DEFENSES = {"PGD-AT", "PGD-AT-rescue", "TRADES", "MART"}
 BASELINE_DEFENSES = {"SpatialSmoothing", "JpegCompression", "FeatureSqueezing"}
 RESULT_SCHEMA_VERSION = 2
 
@@ -126,7 +126,7 @@ def run_adversarial_training(cfg, defense_cfg, device, logger, train_max_samples
     train_max_samples is for SMOKE TESTS ONLY. Formal AT must use the full training
     set (leave it None); limiting training data here would invalidate the comparison.
     """
-    if defense_cfg["name"] in ("PGD-AT", "MART"):
+    if defense_cfg["name"] in ("PGD-AT", "PGD-AT-rescue", "MART"):
         return _run_custom_at(cfg, defense_cfg, device, logger, train_max_samples)
     return _run_art_trainer(cfg, defense_cfg, device, logger, train_max_samples)
 
@@ -210,10 +210,17 @@ def _run_custom_at(cfg, defense_cfg, device, logger, train_max_samples=None):
         logger.info("AT loss: plain CE")
     criterion = nn.CrossEntropyLoss(weight=ce_weight)
 
+    # AT learning rate: defaults to standard training's LR, but a defense block may
+    # override it (e.g. a rescue run halves the LR for a gentler AT optimisation).
+    at_lr = float(defense_cfg.get("lr", train_cfg["lr"]))
     optimizer = torch.optim.Adam(
-        model.parameters(), lr=train_cfg["lr"],
+        model.parameters(), lr=at_lr,
         weight_decay=train_cfg.get("weight_decay", 0.0),
     )
+    # Gradient-norm clipping (AT stabiliser; default 0 = off). Clips the unscaled
+    # gradient before the optimizer step to curb the loss spikes that push AT into
+    # the degenerate uniform-output collapse on harder tasks / smaller models.
+    grad_clip = float(defense_cfg.get("grad_clip", 0.0))
     nb_epochs = defense_cfg.get("nb_epochs", train_cfg["epochs"])
     # AT stabilisers (default 0 = off): warming up the LR and the perturbation
     # budget over the first epochs prevents the early collapse to a degenerate
@@ -245,7 +252,8 @@ def _run_custom_at(cfg, defense_cfg, device, logger, train_max_samples=None):
         f"{variant}: eps={eps:.5f}, eps_step={eps_step:.5f}, inner_iter={max_iter}, "
         f"nb_epochs={nb_epochs}, batch_size={cfg['data']['batch_size']}, "
         f"weight_decay={train_cfg.get('weight_decay', 0.0)}, amp={use_amp}({amp_dtype}), "
-        f"lr_warmup={lr_warmup_epochs}, eps_warmup={eps_warmup_epochs}"
+        f"lr={at_lr:.2e}, lr_warmup={lr_warmup_epochs}, eps_warmup={eps_warmup_epochs}, "
+        f"grad_clip={grad_clip or 'off'}"
         + (f", beta={beta}" if variant == "MART" else "")
     )
     if train_max_samples is not None:
@@ -275,6 +283,9 @@ def _run_custom_at(cfg, defense_cfg, device, logger, train_max_samples=None):
                 else:
                     loss = criterion(model(x_adv), labels)  # Madry: train on adv only
             scaler.scale(loss).backward()
+            if grad_clip > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             scaler.step(optimizer)
             scaler.update()
             running += loss.item() * images.size(0)

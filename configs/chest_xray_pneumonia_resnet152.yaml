@@ -112,6 +112,16 @@ defenses_main:
     eps_warmup_epochs: 5
     lr_warmup_epochs: 3
     batch_size: 8               # clean+adv double forward needs ~2x memory vs PGD-AT
+  - name: "PGD-AT-rescue"       # stronger stabilisers to test if a collapsed point
+    eps: 0.031373              # is genuinely un-trainable or just under-stabilised.
+    eps_step: 0.007843         # Separate results dir/checkpoint suffix (pgd_at_rescue)
+    max_iter: 7                # -> does NOT overwrite the original PGD-AT collapse.
+    nb_epochs: 30              # more epochs
+    eps_warmup_epochs: 8       # longer perturbation-budget ramp
+    lr_warmup_epochs: 5        # longer LR ramp
+    lr: 5.0e-5                 # halved LR (base 1e-4) for a gentler AT optimisation
+    grad_clip: 1.0             # gradient-norm clipping (new stabiliser)
+    batch_size: 16
 
 # --- Strong attacks used to EVALUATE the defended model (avoid overestimating). ---
 defense_eval:

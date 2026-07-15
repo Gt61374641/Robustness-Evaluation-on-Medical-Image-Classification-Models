@@ -159,18 +159,48 @@ def _standard_clean_rob8(ds, model, seed="seed42"):
             "collapsed": False}
 
 
+def _agg_defense(ds, model, method, seeds):
+    """Aggregate one (model, method) cell over seeds.
+
+    Keeps `rob8`/`clean` as the seed-mean (back-compat: the R backend reads
+    those scalars) and adds `rob8_std`/`clean_std`/`n_seeds` for error bars.
+    `collapsed` = majority vote over the per-seed collapse flags.
+    """
+    recs = []
+    for s in seeds:
+        rec = _standard_clean_rob8(ds, model, s) if method == "Standard" \
+            else _defense_clean_rob8(ds, model, method, s)
+        if rec is not None:
+            recs.append(rec)
+    if not recs:
+        return {"clean": None, "rob8": None, "rob8_std": 0.0, "clean_std": 0.0,
+                "n_seeds": 0, "collapsed": False, "seeds": []}
+
+    def stat(key):
+        vals = [r[key] for r in recs if r.get(key) is not None]
+        if not vals:
+            return None, 0.0
+        return float(np.mean(vals)), (float(np.std(vals)) if len(vals) > 1 else 0.0)
+
+    rob8_m, rob8_s = stat("rob8")
+    clean_m, clean_s = stat("clean")
+    n_coll = sum(1 for r in recs if r.get("collapsed"))
+    return {"clean": clean_m, "clean_std": clean_s,
+            "rob8": rob8_m, "rob8_std": rob8_s,
+            "n_seeds": len(recs), "collapsed": n_coll * 2 > len(recs),
+            "seeds": [s for s in seeds]}
+
+
 def defense_methods():
     ds = "chest_xray_pneumonia"
     models = ["resnet18", "resnet50", "resnet152"]
     methods = ["Standard", "PGD-AT", "TRADES", "MART"]
+    seeds = ["seed42", "seed43", "seed44"]
     out = {"dataset": ds, "display": "Chest X-ray", "models": models,
-           "display_names": DISPLAY, "methods": methods, "rows": []}
+           "display_names": DISPLAY, "methods": methods, "seeds": seeds, "rows": []}
     for m in models:
         for meth in methods:
-            rec = _standard_clean_rob8(ds, m) if meth == "Standard" \
-                else _defense_clean_rob8(ds, m, meth)
-            if rec is None:
-                rec = {"clean": None, "rob8": None, "collapsed": False}
+            rec = _agg_defense(ds, m, meth, seeds)
             out["rows"].append({"model": m, "method": meth, **rec})
     json.dump(out, open(OUT / "defense_methods.json", "w"), indent=2)
     print("wrote defense_methods.json")

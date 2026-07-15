@@ -181,13 +181,18 @@ def fig_defense_methods():
     def grouped(ax, field, ylabel, mark_collapse):
         for i, meth in enumerate(methods):
             vals = [(idx[(m, meth)][field] or 0) * 100 for m in models]
+            errs = [(idx[(m, meth)].get(field + "_std") or 0) * 100 for m in models]
             col = [idx[(m, meth)]["collapsed"] for m in models]
             offset = (i - (len(methods) - 1) / 2) * w
-            for j, (xp, yv, c) in enumerate(zip(x, vals, col)):
+            for j, (xp, yv, ye, c) in enumerate(zip(x, vals, errs, col)):
                 ax.bar(xp + offset, yv, width=w,
                        color=METHOD_COLORS[meth] if not (c and mark_collapse) else "white",
                        edgecolor=METHOD_COLORS[meth], linewidth=0.7,
                        label=meth if j == 0 else None, zorder=2)
+                # error bar only where we have >1 seed (ye>0), drawn above the bar
+                if ye > 0:
+                    ax.errorbar(xp + offset, yv, yerr=ye, fmt="none", ecolor="0.25",
+                                elinewidth=0.7, capsize=1.6, zorder=4)
                 if c and mark_collapse:
                     ax.plot(xp + offset, 2.2, marker="x", ms=4, color=COLLAPSE_RED,
                             mew=1.4, zorder=5, clip_on=False)

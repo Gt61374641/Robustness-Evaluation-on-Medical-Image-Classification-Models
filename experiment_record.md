@@ -2,7 +2,7 @@
 
 > 毕设题目：*Robustness Evaluation on Medical Image Classification Models*
 > 借鉴：Rodriguez et al. 2022 (BMC, *On the role of deep learning model complexity in adversarial robustness for medical images*)
-> 最后更新：2026-07-10（扩展批次代码就绪：新架构 DeiT-S/ConvNeXt-T、四种新攻击、MART、5 模型 AT 补全 → 见 §9 + `run_extension.sh`，待云端跑）
+> 最后更新：2026-07-15（AT 多-seed 回传合并：chest R50/R152 三防御 seed42/43/44 齐 → 防御主图带三-seed 误差带；sci_defense 三张诊断图本地补齐 → 见 §8）
 
 ---
 
@@ -303,9 +303,13 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 
 ---
 
-## 8. 状态与待办(更新于 **2026-07-12**,扩展批次回传 + 主图现代化后)
+## 8. 状态与待办(更新于 **2026-07-15**,AT 多-seed 回传 + 防御主图带误差带 + sci_defense 补齐后)
 
 **已完成:**
+- ✅ **AT 多-seed 补全(2026-07-15)**:AutoDL backfill(`run_bf_p{1,2,3}.sh` 三 tmux 并行)跑完 **chest R50/R152 × {PGD-AT/TRADES/MART} × seed{43,44}** + malaria R50/R152 seed43/44 + oct R152 rescue + 决策边界图。结果打包 `results_multiseed.tgz`(2.4G)下载,用**新脚本 `scripts/merge_cloud_results.py`**(add-only,不覆盖已验证 seed42;默认 dry-run)并入本地(215 新文件)。**chest R50/R152 三防御现均 seed42/43/44 三-seed**。
+  - `extract_figure_data.py` 的 `defense_methods()` 改为**对 seed 聚合**:`rob8`/`clean` 保持均值(R 后端兼容),新增 `rob8_std`/`clean_std`/`n_seeds`,`collapsed` 改多数投票。`generate_main_figures.py` 防御柱状图加误差棒(n>1 才画)。`figures/main/defense_methods.*` 已重出。
+  - 多-seed rob8@8/255(mean±std):**R50** PGD-AT 0.370±0.198(方差大,一个 seed 明显差)/ TRADES 0.644±0.007 / MART 0.628±0.012;**R152** PGD-AT 0.665±0.014 / TRADES 0.657±0.000(三 seed 恰好都 410/624,非重复,md5 各异)/ MART 0.691±0.016。**R18 三防御仍单/双 seed(未补,图上无误差棒)。**
+- ✅ **sci_defense 诊断图补齐(2026-07-15)**:云端因缺 clean json 失败的 R18/R50/R152 三张,已在**本地**(本地有 `clean/seed42/clean_results.json`)用 `generate_defense_sci_figures.py` 补出,各 5 图 + summary CSV(仍 seed42 单-seed 诊断,非主对比图)。
 - chest_xray / malaria / oct2017 三数据集**标准训练 + ε 扫描**,**三数据集现均 3-seed(42/43/44)** → H1 误差带完整、非单调 U 形三数据集稳健复现。
 - **AT 完整 5 模型阶梯 × 3 数据集**(扩展批次补全 R34/R101),统一 warmup 协议 + PGD-50/5重启强评估:
   - ✅ 稳定成功:chest R50/R152、malaria R50/R101/R152、oct R50。R50→R152 robust 单调上升。
@@ -319,10 +323,11 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 **待办(下次再做):**
 - [ ] 论文 **Results / Discussion 写作**(最高优先)。
 - [x] ~~**paper_tables 重生**:防御表扩三方法(+MART)、新增攻击方法对比表~~ **已完成(2026-07-13)**:`generate_comparison_tables.py` 从 `figures/data/*.json` 出 table5(四法防御)/table6(攻击对比)/table8(H2 阶梯),与主图同源;旧 2 方法表已删。
-- [ ] **AT 补多 seed**:PGD-AT 除 chest R50(seed42/43)外几乎全为单 seed42,TRADES/MART 全单 seed → 关键点(chest/malaria R50/R152、三方法)补 seed43/44 以对齐 H1 的统计强度。
+- [x] ~~**AT 补多 seed**~~ **已完成(2026-07-15)**:chest R50/R152 × 三方法 × seed{42,43,44} 齐,防御主图带三-seed 误差带。**剩:R18 × TRADES/MART 仍单 seed**(若论文要 R18 也带误差带需再补 R18×{TRADES,MART}×seed43/44);malaria/oct 的 AT 多-seed 未做(次数据集,单 seed42 可接受)。
+- [x] ~~**sci_defense 三张诊断图**~~ **已在本地补出(2026-07-15)**,见上"已完成"。(注:sci_defense 仍是逐模型 2 方法诊断图,非三方法主图;要三方法看 `figures/main/defense_methods.*`。)
 - [ ] (可选)再救一次 **oct R152 / 代表性塌缩点**:更强稳定化(eps_warmup=8 / lr_warmup=5 / nb_epochs=30 / LR 减半 / 梯度裁剪),区分"本质难 AT" vs "协议不够稳"。
-- [ ] (可选)malaria/oct 的**决策边界**图;malaria/oct 的 TRADES 消融。
-- [ ] (可选)`sci_defense` 重生为三方法;`generate_clean_sci_figures.py` 新架构 clean 诊断(需 torch + checkpoint)。
+- [ ] (可选)malaria/oct 的**决策边界**图(本轮 backfill 已出 malaria+oct 决策边界,若需下载 `figures/` 未打包版可在云端补 tar);malaria/oct 的 TRADES 消融。
+- [ ] (可选)`generate_clean_sci_figures.py` 新架构 clean 诊断(需 torch + checkpoint)。
 
 **复现要点(本轮新增):** AT 权重在 `checkpoints/{dataset}_{model}_seed42[_43]_pgd_at.pth`(共 11 个,已从云端下载到本地);
 塌缩判定依据 = 运行时 `results/.../defense_PGD-AT/seedN/config.yaml` 快照(确认 warmup 已启用)+ `evaluate_defense.log`

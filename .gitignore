@@ -24,6 +24,8 @@ build/
 tests/_pytest_tmp*/
 .ipynb_checkpoints/
 *.log
+reports/audit_results*.json
+reports/audit_results*.csv
 wandb/
 .vscode/
 

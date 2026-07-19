@@ -58,6 +58,12 @@ df$dataset_display <- factor(df$dataset_display, levels = names(DATASET_COLORS))
 df$model <- factor(df$model, levels = names(DISPLAY))
 df$model_label <- factor(DISPLAY[as.character(df$model)], levels = DISPLAY)
 df$state <- ifelse(df$collapsed, "collapsed", "trained")
+# multi-seed error bars: only on trained points with >1 seed and non-zero spread.
+# Kept on the FULL df (NA elsewhere) so position_dodge sees every dataset at every
+# model and the bars stay aligned with the columns.
+has_err <- !df$collapsed & df$n_seeds > 1 & df$robust8_std > 0
+df$err_lo <- ifelse(has_err, pmax(0, df$robust8 - df$robust8_std), NA_real_)
+df$err_hi <- ifelse(has_err, df$robust8 + df$robust8_std, NA_real_)
 
 # ── Panel a: capacity trend ─────────────────────────────────────────────────
 pa <- ggplot(df, aes(x = params_m, y = robust8, colour = dataset_display)) +
@@ -86,6 +92,10 @@ pb <- ggplot(df, aes(x = model_label, y = robust8, fill = dataset_display)) +
   geom_col(data = subset(df, collapsed), fill = "white",
            aes(colour = dataset_display), position = dodge, width = 0.75,
            linewidth = 0.3) +
+  # multi-seed error bars on trained points (NA rows drop out silently)
+  geom_errorbar(aes(ymin = err_lo, ymax = err_hi, group = dataset_display),
+                position = dodge, width = 0.35, linewidth = 0.35,
+                colour = "grey20", na.rm = TRUE, show.legend = FALSE) +
   # red x at the base of every collapsed bar
   geom_point(data = subset(df, collapsed), aes(y = 0.022),
              position = dodge, shape = 4, colour = COLLAPSE_RED,

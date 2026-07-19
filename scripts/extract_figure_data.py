@@ -3,8 +3,10 @@
 Single source of truth so the Python and R figure backends render byte-identical
 numbers. One JSON per hero figure:
 
-  at_ladder_h2.json           H2 5-model AT ladder, PGD@8 full robust acc (already
-                              written by the at_ladder step; re-emitted here too)
+  at_ladder_h2.json           H2 5-model AT ladder, PGD@8 full robust acc,
+                              seed-mean over 42/43/44 (+std/n_seeds); PGD-AT only
+  at_rescue.json              PGD-AT-rescue points vs original PGD-AT (separate
+                              protocol -- stability diagnostic, not in the ladder)
   h1_pgd_curves.json          H1 robustness vs eps, FGSM & PGD, per dataset/model,
                               mean+std over seeds (PGD collapse-artifact excluded)
   h1_complexity_fixedeps.json H1 U-shape: robust acc at eps=0.1/255 vs capacity
@@ -206,6 +208,78 @@ def defense_methods():
     print("wrote defense_methods.json")
 
 
+def at_ladder_h2():
+    """H2 5-model AT ladder x 3 datasets, PGD@8 full robust acc (PGD-AT).
+
+    Aggregated over seed42/43/44 (whatever exists per cell). Keeps `clean`/
+    `robust8` as the seed-mean so the R/py figure backends and table8 keep
+    reading those scalars; adds `clean_std`/`robust8_std`/`n_seeds` for error
+    bars. Uses the ORIGINAL unified PGD-AT protocol only -- the PGD-AT-rescue
+    runs are a different (stronger-stabilisation) protocol and live in
+    at_rescue.json so the two are never mixed in one ladder.
+    """
+    seeds = ["seed42", "seed43", "seed44"]
+    rows = []
+    for ds, disp, _ in DATASETS:
+        for m in LADDER:
+            rec = _agg_defense(ds, m, "PGD-AT", seeds)
+            rows.append({
+                "dataset": ds, "dataset_display": disp,
+                "model": m, "params_m": PARAMS_M[m],
+                "clean": rec["clean"], "clean_std": rec["clean_std"],
+                "robust8": rec["rob8"], "robust8_std": rec["rob8_std"],
+                "n_seeds": rec["n_seeds"], "collapsed": rec["collapsed"],
+            })
+    out = {
+        "metric": "PGD@8/255 full robust accuracy (PGD-AT, seed-mean over 42/43/44)",
+        "protocol": "unified PGD-AT (eps_warmup=5, lr_warmup=3, nb_epochs aligned); "
+                    "PGD-50+5restart strong eval",
+        "ladder": LADDER, "params_m": PARAMS_M,
+        "datasets": [ds for ds, _, _ in DATASETS],
+        "rows": rows,
+    }
+    json.dump(out, open(OUT / "at_ladder_h2.json", "w"), indent=2)
+    print("wrote at_ladder_h2.json")
+
+
+def at_rescue():
+    """PGD-AT-rescue points (stronger stabilisation) vs their ORIGINAL PGD-AT.
+
+    Separate from the H2 ladder on purpose: rescue is a different protocol, so
+    it is reported as a stability/diagnostic table (original collapsed -> rescue
+    recovered), not silently substituted into the PGD-AT ladder.
+    """
+    seeds = ["seed42", "seed43", "seed44"]
+    disp_ds = {ds: disp for ds, disp, _ in DATASETS}
+    rows = []
+    for ds, _, _ in DATASETS:
+        for m in LADDER:
+            rdir = ROOT / "results" / ds / m / "defense_PGD-AT-rescue"
+            if not rdir.is_dir():
+                continue
+            rescue = _agg_defense(ds, m, "PGD-AT-rescue", seeds)
+            orig = _agg_defense(ds, m, "PGD-AT", seeds)
+            rows.append({
+                "dataset": ds, "dataset_display": disp_ds[ds],
+                "model": m, "params_m": PARAMS_M[m],
+                "orig_clean": orig["clean"], "orig_robust8": orig["rob8"],
+                "orig_collapsed": orig["collapsed"], "orig_n_seeds": orig["n_seeds"],
+                "rescue_clean": rescue["clean"], "rescue_clean_std": rescue["clean_std"],
+                "rescue_robust8": rescue["rob8"], "rescue_robust8_std": rescue["rob8_std"],
+                "rescue_collapsed": rescue["collapsed"], "rescue_n_seeds": rescue["n_seeds"],
+            })
+    out = {
+        "metric": "PGD@8/255 full robust accuracy: original PGD-AT vs PGD-AT-rescue",
+        "rescue_protocol": "stronger stabilisation (e.g. eps_warmup=8/lr_warmup=5/"
+                           "longer schedule/LR halved/grad-clip); PGD-50+5restart eval",
+        "note": "reported separately from the H2 PGD-AT ladder; different protocol, "
+                "not substituted into it.",
+        "rows": rows,
+    }
+    json.dump(out, open(OUT / "at_rescue.json", "w"), indent=2)
+    print("wrote at_rescue.json")
+
+
 def attack_methods():
     ds = "chest_xray_pneumonia"
     models = LADDER + ["deit_small", "convnext_tiny"]
@@ -239,5 +313,7 @@ if __name__ == "__main__":
     aggregate_curves()
     fixed_eps_ushape()
     defense_methods()
+    at_ladder_h2()
+    at_rescue()
     attack_methods()
     print("done -> figures/data/")

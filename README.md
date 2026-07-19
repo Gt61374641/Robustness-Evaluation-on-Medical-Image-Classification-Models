@@ -33,8 +33,12 @@ Large local artifacts are git-excluded: `data/`, `checkpoints/`, `results/`,
 
 ## Setup
 
+Use the `medimg-robust` conda environment for training, evaluation, tests, and
+all figure/table generation. Keeping plotting in the same environment avoids
+version drift between local regeneration and AutoDL outputs.
+
 ```powershell
-# inside the (medimg-robust) env
+conda activate medimg-robust
 python scripts/download_data.py --dataset chest_xray_pneumonia
 python scripts/download_data.py --dataset oct2017
 python scripts/download_data.py --dataset malaria
@@ -53,6 +57,12 @@ python scripts/evaluate_robustness.py --config configs/chest_xray_pneumonia_resn
 python scripts/evaluate_defense.py --config configs/chest_xray_pneumonia_resnet50.yaml --defense PGD-AT --max-samples 1024
 
 # signature figures (after the ladder is evaluated)
+conda activate medimg-robust
+python scripts/extract_figure_data.py
+python scripts/generate_main_figures.py
+python scripts/generate_comparison_tables.py
+python scripts/generate_at_ladder_figure.py
+python scripts/generate_rescue_figure.py
 python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --seed seed42
 
 # or drive a whole dataset end-to-end (train -> clean -> robustness -> figures)

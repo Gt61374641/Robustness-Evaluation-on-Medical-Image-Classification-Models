@@ -10,6 +10,8 @@ Emits, per table, a raw CSV, a display-formatted CSV, and a LaTeX file:
   table6_attack_methods     CW/DeepFool mean L2 + AutoAttack/Square robust@8,
                             7 chest models
   table8_h2_at_ladder       5-model AT ladder x 3 datasets (clean, robust@8, collapse)
+  table9_at_rescue          original PGD-AT vs PGD-AT-rescue (stability diagnostic,
+                            separate protocol -- e.g. OCT ResNet-152 recovers)
 
 Output: figures/paper_tables/<dataset>/ (dataset-level; defense/attack are chest).
 
@@ -123,6 +125,37 @@ def h2_ladder_table():
     return raw, fmt
 
 
+def at_rescue_table():
+    """Original PGD-AT vs PGD-AT-rescue (stronger stabilisation), separate protocol."""
+    d = json.load(open(DATA / "at_rescue.json"))
+    rows = []
+    for r in d["rows"]:
+        rows.append({
+            "dataset": r["dataset_display"],
+            "model": DISP.get(r["model"], r["model"]),
+            "params_m": r["params_m"],
+            "orig_clean": r["orig_clean"],
+            "orig_robust_pgd8": r["orig_robust8"],
+            "orig_collapsed": r["orig_collapsed"],
+            "rescue_clean": r["rescue_clean"],
+            "rescue_robust_pgd8": r["rescue_robust8"],
+            "rescue_collapsed": r["rescue_collapsed"],
+        })
+    raw = pd.DataFrame(rows)
+    fmt = raw.copy()
+    for c in ("orig_clean", "orig_robust_pgd8", "rescue_clean", "rescue_robust_pgd8"):
+        fmt[c] = fmt[c].map(lambda v: _pct(v))
+    for c in ("orig_collapsed", "rescue_collapsed"):
+        fmt[c] = fmt[c].map(lambda b: "yes" if b else "")
+    fmt = fmt.rename(columns={
+        "dataset": "Dataset", "model": "Model", "params_m": "Params (M)",
+        "orig_clean": "PGD-AT clean (%)", "orig_robust_pgd8": "PGD-AT robust@8 (%)",
+        "orig_collapsed": "PGD-AT collapsed",
+        "rescue_clean": "Rescue clean (%)", "rescue_robust_pgd8": "Rescue robust@8 (%)",
+        "rescue_collapsed": "Rescue collapsed"})
+    return raw, fmt
+
+
 def main():
     outputs = []
     # defense + attack are chest-only
@@ -134,6 +167,9 @@ def main():
     # H2 ladder spans all datasets
     hraw, hfmt = h2_ladder_table()
     outputs += _save(hraw, hfmt, OUT, "table8_h2_at_ladder")
+    # PGD-AT rescue (optimisation-stability diagnostic), separate protocol
+    rraw, rfmt = at_rescue_table()
+    outputs += _save(rraw, rfmt, OUT, "table9_at_rescue")
 
     print(f"Generated {len(outputs)} comparison-table files:")
     for p in outputs:

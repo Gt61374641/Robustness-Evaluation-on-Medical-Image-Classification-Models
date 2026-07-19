@@ -11,6 +11,8 @@ numbers. One JSON per hero figure:
                               mean+std over seeds (PGD collapse-artifact excluded)
   h1_complexity_fixedeps.json H1 U-shape: robust acc at eps=0.1/255 vs capacity
   defense_methods.json        Standard / PGD-AT / TRADES / MART, chest R18/R50/R152
+  defense_methods_malaria.json  same four methods, malaria R18/R50/R152 (cross-
+                              dataset replication of the R18 PGD-AT-collapse rescue)
   attack_methods.json         CW / DeepFool / AutoAttack / Square on 7 chest models
 
 Run:  python scripts/extract_figure_data.py
@@ -189,23 +191,33 @@ def _agg_defense(ds, model, method, seeds):
     n_coll = sum(1 for r in recs if r.get("collapsed"))
     return {"clean": clean_m, "clean_std": clean_s,
             "rob8": rob8_m, "rob8_std": rob8_s,
-            "n_seeds": len(recs), "collapsed": n_coll * 2 > len(recs),
+            "n_seeds": len(recs), "n_collapsed": n_coll,
+            "collapsed": n_coll * 2 > len(recs),
             "seeds": [s for s in seeds]}
 
 
-def defense_methods():
-    ds = "chest_xray_pneumonia"
-    models = ["resnet18", "resnet50", "resnet152"]
+def defense_methods(ds="chest_xray_pneumonia", display="Chest X-ray",
+                    models=("resnet18", "resnet50", "resnet152"),
+                    out_name="defense_methods.json"):
+    """Standard/PGD-AT/TRADES/MART three-method comparison for one dataset.
+
+    Only include a (dataset, model) triple that has TRADES+MART results; the
+    default (chest R18/R50/R152) is the primary comparison, malaria R18/R50/R152
+    is the cross-dataset replication (R18 tests whether TRADES/MART recover the
+    PGD-AT collapse on a second dataset). `n_collapsed` records how many seeds
+    collapsed, so a partial rescue (e.g. malaria R18 MART 1/3) stays visible
+    instead of being hidden inside the seed-mean.
+    """
     methods = ["Standard", "PGD-AT", "TRADES", "MART"]
     seeds = ["seed42", "seed43", "seed44"]
-    out = {"dataset": ds, "display": "Chest X-ray", "models": models,
+    out = {"dataset": ds, "display": display, "models": list(models),
            "display_names": DISPLAY, "methods": methods, "seeds": seeds, "rows": []}
     for m in models:
         for meth in methods:
             rec = _agg_defense(ds, m, meth, seeds)
             out["rows"].append({"model": m, "method": meth, **rec})
-    json.dump(out, open(OUT / "defense_methods.json", "w"), indent=2)
-    print("wrote defense_methods.json")
+    json.dump(out, open(OUT / out_name, "w"), indent=2)
+    print(f"wrote {out_name}")
 
 
 def at_ladder_h2():
@@ -312,7 +324,10 @@ def attack_methods():
 if __name__ == "__main__":
     aggregate_curves()
     fixed_eps_ushape()
-    defense_methods()
+    defense_methods()  # chest (primary)
+    defense_methods(ds="malaria", display="Malaria",
+                    models=("resnet18", "resnet50", "resnet152"),
+                    out_name="defense_methods_malaria.json")  # cross-dataset replication
     at_ladder_h2()
     at_rescue()
     attack_methods()

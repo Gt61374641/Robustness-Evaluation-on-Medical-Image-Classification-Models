@@ -154,16 +154,27 @@ fig_h1_ushape <- function() {
 }
 
 # ── Defense methods ─────────────────────────────────────────────────────────
-fig_defense <- function() {
-  d <- fromJSON(file.path(DATA, "defense_methods.json"), simplifyVector = FALSE)
+fig_defense <- function(json_name = "defense_methods.json",
+                        out_name = "defense_methods_r") {
+  d <- fromJSON(file.path(DATA, json_name), simplifyVector = FALSE)
+  getn <- function(x, k, default = NA) if (is.null(x[[k]])) default else x[[k]]
   rows <- lapply(d$rows, function(r) data.frame(
     model = sub("ResNet-", "R", DISP[[r$model]]), method = r$method,
-    clean = ifelse(is.null(r$clean), NA, r$clean) * 100,
-    rob8  = ifelse(is.null(r$rob8), NA, r$rob8) * 100,
+    clean = getn(r, "clean") * 100,
+    rob8  = getn(r, "rob8") * 100,
+    rob8_std = getn(r, "rob8_std", 0) * 100,
+    n_seeds = getn(r, "n_seeds", 1),
+    n_collapsed = getn(r, "n_collapsed", 0),
     collapsed = isTRUE(r$collapsed), stringsAsFactors = FALSE))
   df <- do.call(rbind, rows)
   df$model <- factor(df$model, levels = c("R18", "R50", "R152"))
   df$method <- factor(df$method, levels = names(METHOD_COLORS))
+  # multi-seed error bars: full-df + NA so position_dodge keeps bars aligned
+  has_err <- !df$collapsed & df$n_seeds > 1 & df$rob8_std > 0
+  df$err_lo <- ifelse(has_err, pmax(0, df$rob8 - df$rob8_std), NA_real_)
+  df$err_hi <- ifelse(has_err, df$rob8 + df$rob8_std, NA_real_)
+  df$partial <- df$n_collapsed > 0 & df$n_collapsed < df$n_seeds
+  df$frac_lab <- ifelse(df$partial, paste0(df$n_seeds - df$n_collapsed, "/", df$n_seeds), "")
   dodge <- position_dodge(width = 0.8)
   mk <- function(yvar, ylab, mark) {
     g <- ggplot(df, aes(model, .data[[yvar]], fill = method)) +
@@ -171,17 +182,32 @@ fig_defense <- function() {
       scale_fill_manual(values = METHOD_COLORS) +
       coord_cartesian(ylim = c(0, 100)) +
       labs(x = NULL, y = ylab)
-    if (mark) g <- g + geom_point(
-      data = subset(df, collapsed), aes(y = 2.2, group = method),
-      position = dodge, shape = 4, colour = COLLAPSE_RED, size = 1.1,
-      stroke = 0.6, show.legend = FALSE)
+    if (mark) {
+      g <- g +
+        geom_errorbar(aes(ymin = err_lo, ymax = err_hi, group = method),
+                      position = dodge, width = 0.25, linewidth = 0.3,
+                      colour = "grey20", na.rm = TRUE, show.legend = FALSE) +
+        geom_point(data = subset(df, collapsed), aes(y = 2.2, group = method),
+                   position = dodge, shape = 4, colour = COLLAPSE_RED, size = 1.1,
+                   stroke = 0.6, show.legend = FALSE) +
+        # partial collapse: annotate rescued-seed fraction just above the bar
+        geom_text(data = subset(df, partial),
+                  aes(y = pmin(rob8 + 3, 94), label = frac_lab, group = method),
+                  position = dodge, colour = COLLAPSE_RED, fontface = "bold",
+                  size = 1.8, vjust = 0, show.legend = FALSE)
+    }
     g
   }
   pa <- mk("rob8", "Robust accuracy (%) @ 8/255", TRUE) + labs(tag = "a") +
     theme(legend.position = c(0.02, 0.98), legend.justification = c(0, 1))
   pb <- mk("clean", "Clean accuracy (%)", FALSE) + labs(tag = "b") +
     theme(legend.position = "none")
-  save_pub(pa + pb, "defense_methods_r", 183, 76)
+  fig <- pa + pb
+  disp <- getn(d, "display", "")
+  if (nzchar(disp)) fig <- fig + patchwork::plot_annotation(
+    title = disp, theme = theme(plot.title = element_text(
+      size = 8, face = "bold", hjust = 0.5)))
+  save_pub(fig, out_name, 183, 76)
 }
 
 # ── Attack methods ──────────────────────────────────────────────────────────
@@ -222,5 +248,8 @@ fig_attack <- function() {
   save_pub(pa + pb, "attack_methods_r", 186, 76)
 }
 
-fig_h1_pgd(); fig_h1_budget(); fig_h1_ushape(); fig_defense(); fig_attack()
+fig_h1_pgd(); fig_h1_budget(); fig_h1_ushape()
+fig_defense()  # chest (primary)
+fig_defense("defense_methods_malaria.json", "defense_methods_malaria_r")  # malaria replication
+fig_attack()
 cat("done -> figures/main/ (_r)\n")

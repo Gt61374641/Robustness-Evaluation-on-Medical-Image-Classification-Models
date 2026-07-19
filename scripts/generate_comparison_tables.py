@@ -48,28 +48,37 @@ def _save(raw, formatted, out_dir, name):
     return [out_dir / f"{name}{s}" for s in (".csv", "_formatted.csv", ".tex")]
 
 
-def defense_methods_table():
-    d = json.load(open(DATA / "defense_methods.json"))
+def defense_methods_table(json_name="defense_methods.json"):
+    d = json.load(open(DATA / json_name))
     rows = []
     for r in d["rows"]:
+        ns, nc = r.get("n_seeds", 1), r.get("n_collapsed", 0)
         rows.append({
             "model": DISP.get(r["model"], r["model"]),
             "method": r["method"],
             "clean_accuracy": r["clean"],
             "robust_acc_pgd8_full": r["rob8"],
-            "robust_acc_pgd8_conditional": r.get("rob8_cond"),
-            "asr_pgd8": r.get("asr8"),
+            "robust_acc_pgd8_std": r.get("rob8_std"),
+            "n_seeds": ns,
+            "seeds_collapsed": f"{nc}/{ns}" if nc else "",
             "collapsed": r["collapsed"],
         })
     raw = pd.DataFrame(rows)
     fmt = raw.copy()
-    for c in ("clean_accuracy", "robust_acc_pgd8_full",
-              "robust_acc_pgd8_conditional", "asr_pgd8"):
-        fmt[c] = fmt[c].map(lambda v: _pct(v))
+    fmt["clean_accuracy"] = fmt["clean_accuracy"].map(lambda v: _pct(v))
+    # robust@8 as mean±std when multi-seed, else plain mean
+    def _rob(row):
+        m = _pct(row["robust_acc_pgd8_full"])
+        s = row["robust_acc_pgd8_std"]
+        if m and row["n_seeds"] > 1 and s is not None and not pd.isna(s):
+            return f"{m}±{float(s) * 100:.1f}"
+        return m
+    fmt["robust_acc_pgd8_full"] = fmt.apply(_rob, axis=1)
+    fmt = fmt.drop(columns=["robust_acc_pgd8_std"])
     fmt["collapsed"] = fmt["collapsed"].map(lambda b: "yes" if b else "")
     fmt = fmt.rename(columns={
         "clean_accuracy": "Clean (%)", "robust_acc_pgd8_full": "Robust@8 full (%)",
-        "robust_acc_pgd8_conditional": "Robust@8 cond. (%)", "asr_pgd8": "ASR@8 (%)",
+        "n_seeds": "Seeds", "seeds_collapsed": "Collapsed seeds",
         "model": "Model", "method": "Method", "collapsed": "Collapsed"})
     return raw, fmt, d.get("display", "Chest X-ray")
 
@@ -158,12 +167,14 @@ def at_rescue_table():
 
 def main():
     outputs = []
-    # defense + attack are chest-only
+    # defense: chest (primary) + malaria (cross-dataset replication)
     draw, dfmt, ds_disp = defense_methods_table()
     araw, afmt, _ = attack_methods_table()
     chest_dir = OUT / "chest_xray_pneumonia"
     outputs += _save(draw, dfmt, chest_dir, "table5_defense_methods")
     outputs += _save(araw, afmt, chest_dir, "table6_attack_methods")
+    mraw, mfmt, _ = defense_methods_table("defense_methods_malaria.json")
+    outputs += _save(mraw, mfmt, OUT / "malaria", "table5_defense_methods")
     # H2 ladder spans all datasets
     hraw, hfmt = h2_ladder_table()
     outputs += _save(hraw, hfmt, OUT, "table8_h2_at_ladder")

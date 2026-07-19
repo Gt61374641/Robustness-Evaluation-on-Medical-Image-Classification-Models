@@ -169,22 +169,27 @@ def fig_h1_ushape():
 
 
 # ── Defense: Standard/PGD-AT/TRADES/MART on chest R18/R50/R152 ──────────────
-def fig_defense_methods():
-    data = _load("defense_methods.json")
+def fig_defense_methods(json_name="defense_methods.json", out_name="defense_methods"):
+    data = _load(json_name)
     models, methods = data["models"], data["methods"]
     disp = data["display_names"]
     idx = {(r["model"], r["method"]): r for r in data["rows"]}
     x = np.arange(len(models))
     w = 0.8 / len(methods)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.0))
+    partial_seen = False
 
     def grouped(ax, field, ylabel, mark_collapse):
+        nonlocal partial_seen
         for i, meth in enumerate(methods):
             vals = [(idx[(m, meth)][field] or 0) * 100 for m in models]
             errs = [(idx[(m, meth)].get(field + "_std") or 0) * 100 for m in models]
             col = [idx[(m, meth)]["collapsed"] for m in models]
+            ncol = [idx[(m, meth)].get("n_collapsed", 0) for m in models]
+            nsd = [idx[(m, meth)].get("n_seeds", 1) for m in models]
             offset = (i - (len(methods) - 1) / 2) * w
-            for j, (xp, yv, ye, c) in enumerate(zip(x, vals, errs, col)):
+            for j, (xp, yv, ye, c, nc, ns) in enumerate(
+                    zip(x, vals, errs, col, ncol, nsd)):
                 ax.bar(xp + offset, yv, width=w,
                        color=METHOD_COLORS[meth] if not (c and mark_collapse) else "white",
                        edgecolor=METHOD_COLORS[meth], linewidth=0.7,
@@ -196,6 +201,14 @@ def fig_defense_methods():
                 if c and mark_collapse:
                     ax.plot(xp + offset, 2.2, marker="x", ms=4, color=COLLAPSE_RED,
                             mew=1.4, zorder=5, clip_on=False)
+                # partial collapse (some but not most seeds): annotate the fraction
+                # just above the bar value, clamped inside the axis (the error bar
+                # can shoot past 100 for a 1-of-3 collapse and would clip the label)
+                elif mark_collapse and 0 < nc < ns:
+                    partial_seen = True
+                    ax.annotate(f"{ns - nc}/{ns}", xy=(xp + offset, min(yv + 3, 94)),
+                                ha="center", va="bottom", fontsize=5.2,
+                                color=COLLAPSE_RED, fontweight="bold", zorder=6)
         ax.set_xticks(x)
         ax.set_xticklabels([disp[m].replace("ResNet-", "R") for m in models])
         ax.set_ylabel(ylabel)
@@ -206,12 +219,17 @@ def fig_defense_methods():
     handles = [Line2D([0], [0], marker="s", ls="none", mfc=METHOD_COLORS[m],
                       mec=METHOD_COLORS[m], ms=6, label=m) for m in methods]
     handles.append(Line2D([0], [0], marker="x", ls="none", color=COLLAPSE_RED,
-                          mew=1.4, ms=6, label="collapsed"))
+                          mew=1.4, ms=6, label="collapsed (all seeds)"))
+    if partial_seen:
+        handles.append(Line2D([0], [0], marker="o", ls="none", mfc="white",
+                              mec=COLLAPSE_RED, mew=1.2, ms=6,
+                              label="partial: k/n seeds rescued"))
     ax1.legend(handles=handles, fontsize=5.8, loc="upper left", ncol=1)
     _panel_label(ax1, "a")
     _panel_label(ax2, "b")
+    fig.suptitle(data.get("display", ""), fontsize=8, fontweight="bold", y=1.02)
     fig.tight_layout(pad=1.0)
-    _save(fig, "defense_methods")
+    _save(fig, out_name)
 
 
 # ── Attacks: CW/DeepFool L2 (a) + AutoAttack/Square robust@8 (b), 7 models ──
@@ -262,7 +280,8 @@ def main():
     fig_h1_pgd()
     fig_h1_attack_budget()
     fig_h1_ushape()
-    fig_defense_methods()
+    fig_defense_methods()  # chest (primary)
+    fig_defense_methods("defense_methods_malaria.json", "defense_methods_malaria")
     fig_attack_methods()
 
 

@@ -2,7 +2,7 @@
 
 > 毕设题目：*Robustness Evaluation on Medical Image Classification Models*
 > 借鉴：Rodriguez et al. 2022 (BMC, *On the role of deep learning model complexity in adversarial robustness for medical images*)
-> 最后更新：2026-07-19（H2 阶梯提取升级为 seed42/43/44 多-seed mean±std + rescue 独立协议输出 `at_rescue.json`/`table9`；oct R152 rescue 救回纳入结论 §5.3d；回填 malaria/oct 的 TRADES/MART 多-seed、三数据集决策边界、新架构 sci_clean → 见 §5.3b/§5.3d/§8）
+> 最后更新：2026-07-20（新增 malaria R18 TRADES/MART 三-seed → §5.3c-2「R18 塌缩救回」跨数据集复现到 N=2：TRADES 3/3、MART 2/3；出 malaria 三方法图/表 `defense_methods_malaria.*`/`paper_tables/malaria/table5`，MART R18 标 "2/3" 部分塌缩。前序 2026-07-19：H2 阶梯多-seed + rescue 独立协议 §5.3d + 归档遗留图/日志到 `_archive/`）
 
 ---
 
@@ -253,7 +253,23 @@ python scripts/generate_complexity_figures.py --dataset chest_xray_pneumonia --s
 1. **两种 AT 方法都大幅提升鲁棒性**,复杂度有利的趋势一致(R50→R152 robust 上升)→ H2 不依赖单一方法,**跨方法复现**。
 2. **R18 的塌缩是 PGD-AT 特有的优化不稳定,而非"R18 本质上无法 AT"**:同样**不带 warmup** 的 TRADES(ART 训练器)把 R18 训成了 0.619@8。→ 修正 §5.3「R18 处于 AT 可训性边缘」的措辞:**边缘性对方法/优化高度敏感**,换方法即可跨过。
 3. TRADES(β=6)整体给出更好的 clean-robust 权衡(R18/R50 clean 与 robust 双赢)。
-> 图/表:`figures/sci_defense/chest_xray_pneumonia/{model}/sci_defense_pgd8_bars.*`(Standard/PGD-AT/TRADES 三柱)、`figures/paper_tables/chest_xray_pneumonia/resnet50/table5_defense_pgd8_comparison.*`。
+> 图/表(权威,三/四方法同源):`figures/main/defense_methods.*`(Standard/PGD-AT/TRADES/MART 四柱,带多-seed 误差棒)、`figures/paper_tables/chest_xray_pneumonia/table5_defense_methods.*`。(旧 `sci_defense/` 逐模型 2 方法诊断图已归档 `_archive/figures_legacy/`。)
+
+#### 5.3c-2 R18 塌缩救回的跨数据集复现(malaria,seed42/43/44,新增 2026-07-20)
+
+在 malaria 上重复「PGD-AT 是否塌缩 R18、TRADES/MART 能否救回」的检验(R18/R50/R152 三方法 × 三 seed):
+
+| 模型 | PGD-AT | TRADES | MART | 观察 |
+|---|---|---|---|---|
+| ResNet-18  | 0.464 / **0.000** ❌塌缩(seed42) | 0.964 / **0.926 ± 0.021** ✅(3/3) | 0.780 / **0.597 ± 0.422** ⚠️(**2/3 救回,seed44 塌**) | PGD-AT 塌、TRADES 稳救、MART 部分救 |
+| ResNet-50  | 0.968 / **0.919 ± 0.022** ✅ | 0.965 / **0.924 ± 0.017** ✅ | 0.964 / **0.916 ± 0.026** ✅ | 三方法齐平(malaria 易) |
+| ResNet-152 | 0.971 / **0.922 ± 0.017** ✅ | 0.959 / **0.909 ± 0.017** ✅ | 0.965 / **0.925 ± 0.023** ✅ | 三方法齐平 |
+
+**发现(§5.3c 的跨数据集加固):**
+1. **「R18 塌缩是 PGD-AT 特有、可被换方法救回」这条承重结论从 N=1(chest)复现到 N=2(malaria)**:malaria R18 在 PGD-AT 下同样塌缩(0.000),TRADES **3/3 seed 全救回**(0.926)。→ 结论不再是单数据集观察。
+2. **新细节:MART 的救回对 seed 敏感**——malaria R18 上 MART **2/3 救回、seed44 仍塌**(clean 0.445≈随机、@8=0),故三-seed 均值 0.597±0.422 方差极大。图/表按 **"2/3 救回"** 标注,不当作"平均鲁棒性 0.6"。这与 R18「AT 可训性边缘、对优化高度敏感」主线一致,且说明 **TRADES 比 MART 更稳的救回者**(两数据集全 6 seed 都成功)。
+3. malaria 数据集本身易,R50/R152 三方法都 ~0.92 齐平,复杂度差异在此数据集不显著(与 §5.3b malaria 列一致)。
+> 图/表:`figures/main/defense_methods_malaria.*`(malaria 三方法,MART R18 标 "2/3")、`figures/paper_tables/malaria/table5_defense_methods.*`(含 `Collapsed seeds` 列)。
 
 ### 5.3d PGD-AT-rescue:塌缩点的优化稳定性(独立协议,2026-07-19 纳入口径)
 
@@ -317,7 +333,7 @@ LR 减半 / 梯度裁剪;强评估同为 PGD-50+5重启)重训,检验"本质难 
 ## 7. 产出文件
 
 - **结果 JSON**:`results/{dataset}/{model}/{clean,robustness,defense_PGD-AT,defense_TRADES,defense_MART}/seed{N}/*.json`(三数据集;chest R18/R50/R152 与 malaria/oct R50 含 TRADES/MART);`defense_PGD-AT-rescue/`(oct R152、chest R18)。
-- **图数据(唯一数据源)**:`figures/data/*.json`(`extract_figure_data.py` 生成):`h1_pgd_curves` / `h1_complexity_fixedeps` / `defense_methods` / `at_ladder_h2`(**多-seed mean/std/n_seeds,2026-07-19**)/ `at_rescue`(**新,rescue vs 原始**)/ `attack_methods`。
+- **图数据(唯一数据源)**:`figures/data/*.json`(`extract_figure_data.py` 生成):`h1_pgd_curves` / `h1_complexity_fixedeps` / `defense_methods`(chest)/ **`defense_methods_malaria`(新 2026-07-20,含 `n_collapsed`)** / `at_ladder_h2`(多-seed mean/std/n_seeds)/ `at_rescue` / `attack_methods`。
 - **图**:
   - `figures/main/`(现代化主图,Python + R 双后端:H1×3 / defense_methods / attack_methods;H2 在 `figures/at_ladder/`;见 `figures/main/README.md`)
   - `figures/at_ladder/H2_at_ladder_{py,r}.*`(H2 5 模型阶梯,**柱状图带多-seed 误差棒,双后端**,2026-07-19)
@@ -325,7 +341,8 @@ LR 减半 / 梯度裁剪;强评估同为 PGD-50+5重启)重训,检验"本质难 
   - `figures/complexity/chest_xray_pneumonia/`(FGSM/PGD 曲线带 3-seed 带、AT 曲线、`complexity_summary_table.csv`)
   - `figures/sci_defense/chest_xray_pneumonia/{resnet18,50,152}/`(逐模型防御诊断:clean-robust 权衡/逐类 ASR/PGD 曲线,含 `sci_defense_summary_metrics.csv`;仍为 2 方法)
   - `figures/sci_clean/chest_xray_pneumonia/`(新架构 DeiT-S/ConvNeXt-T clean 诊断)
-  - `figures/paper_tables/`:逐模型 clean/攻击 `resnet50/table1~4`(`generate_paper_tables.py`);跨模型对比表 `chest_xray_pneumonia/table5_defense_methods`(四法 Standard/PGD-AT/TRADES/MART)、`table6_attack_methods`(7 模型 × CW/DeepFool L2 + AA/Square@8)、`table8_h2_at_ladder`(5 模型 × 3 数据集,**多-seed**)、`table9_at_rescue`(**新,原始 PGD-AT vs rescue**)由 `generate_comparison_tables.py` 从 `figures/data/*.json` 生成,与主图同源。旧 2 方法 table5/6/7 已删。
+  - `figures/main/defense_methods.*`(chest 四法)+ **`defense_methods_malaria.*`(新 2026-07-20,malaria 三方法,MART R18 标 "2/3" 部分塌缩)**
+  - `figures/paper_tables/`:逐模型 clean/攻击 `resnet50/table1~4`(`generate_paper_tables.py`);跨模型对比表 `chest_xray_pneumonia/table5_defense_methods`(四法)、**`malaria/table5_defense_methods`(新,含 `Collapsed seeds` 列)**、`table6_attack_methods`(7 模型 × CW/DeepFool L2 + AA/Square@8)、`table8_h2_at_ladder`(5 模型 × 3 数据集,多-seed)、`table9_at_rescue`(原始 PGD-AT vs rescue)由 `generate_comparison_tables.py` 从 `figures/data/*.json` 生成,与主图同源。旧 2 方法 table5/6/7 已删。
   - `figures/gradcam/`(三数据集 + `{dataset}_gradcam_summary.{png,pdf}` 汇总)、`figures/decision_boundary/{chest_xray_pneumonia,malaria,oct2017}/`(**三数据集 standard + pgd_at**)
 - **checkpoints**:`checkpoints/chest_xray_pneumonia_{model}_seed{42,43,44}.pth`(标准)+ `..._seed42_pgd_at.pth`(AT:18/50/152)
 - **配置**:`configs/{dataset}_base.yaml` + 生成的 `configs/{dataset}_{model}.yaml`(15 份)
@@ -363,9 +380,10 @@ LR 减半 / 梯度裁剪;强评估同为 PGD-50+5重启)重训,检验"本质难 
 - [x] ~~(可选)**chest R18 × TRADES/MART 多-seed**~~ **已完成(2026-07-19)**:seed43/44 已从 AutoDL 回传并合并,`defense_methods.json` 中 R18 TRADES/MART 均为 `n_seeds=3`,防御主图可画误差棒。
 - [x] ~~(可选)**H2 R 后端误差棒 + rescue R 图**~~ **已完成(2026-07-19)**:`generate_at_ladder_figure.R` panel b 加多-seed 误差棒(全-df + NA 写法保 dodge 对齐);新建 `generate_rescue_figure.R`(与 Python 版一致,含红叉图例)。R 后端与 Python 完全对齐。
 
-**范围决定(确认*不*补,2026-07-19 — 非缺口,勿再当 TODO):**
-- **oct R152 的 TRADES/MART 不补**。oct R152 只有原始 PGD-AT(seed42)+ PGD-AT-rescue(seed42)。补三方法会把 rescue(不同协议)与三方法主对比混在一起、稀释重点。**定稿写法**:oct R152 = *PGD-AT 优化稳定性案例*,rescue 单独报告(§5.3d),**不进三方法主对比**。
-- **malaria/oct 的 R18/R34/R101 的 TRADES/MART 多-seed 不补**。它们不是三方法主证据。**三方法主证据已足够硬且自洽**:chest R18/R50/R152 + malaria R50/R152 + oct R50,且 R50→R152 的 robust 在三数据集均单调上升。补小模型多-seed 只增成本不加结论。
+**范围决定(2026-07-19 定,2026-07-20 更新):**
+- ✅ **malaria R18 TRADES/MART 已补(2026-07-20)** —— 唯一破例补的小模型点,因为它不是"填矩阵"而是**检验 §5.3c「TRADES/MART 救回 PGD-AT 塌缩 R18」承重结论的跨数据集泛化**(malaria R18 在 PGD-AT 下也塌缩,正好可测)。结果见 §5.3c-2:TRADES 3/3 救回、MART 2/3 救回。
+- **oct R152 的 TRADES/MART 仍不补**。oct R152 只有原始 PGD-AT(seed42)+ PGD-AT-rescue(seed42)。补三方法会把 rescue(不同协议)与三方法主对比混在一起、稀释重点。**定稿写法**:oct R152 = *PGD-AT 优化稳定性案例*,rescue 单独报告(§5.3d),**不进三方法主对比**。
+- **malaria/oct 的 R34/R101 与 oct R18 的 TRADES/MART 仍不补**。它们不是承重证据(oct R18 在 PGD-AT 下未塌缩,无"救回"可测;R34/R101 只是填矩阵)。三方法主证据已足够硬:chest R18/R50/R152 + malaria R18/R50/R152 + oct R50。
 > 若审稿人明确要求"OCT R152 三方法对比"或"全阶梯三方法",再回来补;当前范围下视为**已完成的取舍**。
 
 **复现要点(本轮新增):** AT 权重在 `checkpoints/{dataset}_{model}_seed42[_43]_pgd_at.pth`(共 11 个,已从云端下载到本地);

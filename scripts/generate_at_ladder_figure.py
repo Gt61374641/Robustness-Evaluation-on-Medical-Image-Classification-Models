@@ -106,13 +106,20 @@ def panel_bars(ax, data, idx):
         color = DATASET_COLORS[ds]
         y = [idx[ds][m]["robust8"] for m in ladder]
         col = [idx[ds][m]["collapsed"] for m in ladder]
+        std = [idx[ds][m].get("robust8_std", 0.0) or 0.0 for m in ladder]
+        nsd = [idx[ds][m].get("n_seeds", 1) or 1 for m in ladder]
         offset = (i - (n_groups - 1) / 2) * w
-        for xp, yp, c in zip(x, y, col):
+        for xp, yp, c, sd, ns in zip(x, y, col, std, nsd):
             # trained -> solid fill; collapsed -> pale hollow bar + red x at base
             ax.bar(xp + offset, yp, width=w,
                    color=color if not c else "white",
                    edgecolor=color, linewidth=0.8,
                    alpha=1.0 if not c else 0.9, zorder=2)
+            # error bar only where we have multi-seed evidence on a trained point
+            if not c and ns > 1 and sd > 0:
+                ax.errorbar(xp + offset, yp, yerr=sd, fmt="none",
+                            ecolor="#333333", elinewidth=0.7, capsize=1.8,
+                            capthick=0.7, zorder=4)
             if c:
                 ax.plot(xp + offset, 0.022, marker="x", ms=4.5,
                         color=COLLAPSE_RED, mew=1.5, zorder=5,

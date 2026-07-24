@@ -320,7 +320,22 @@ LR 减半 / 梯度裁剪;强评估同为 PGD-50+5重启)重训,检验"本质难 
 
 ## 6. 关键技术发现 / 坑
 
-1. **大 ε 退化伪影**:标准模型在 ≥1/255 下 PGD 把预测塌缩到多数类(PNEUMONIA),使 full robust acc 虚高(如 R50@8/255 假 0.25)。→ **PGD 标准曲线裁到 ≤0.3/255**;FGSM 保留全程;AT 对比柱的 R50 标准值需脚注说明。
+1. **大 ε 退化伪影(2026-07-25 用 `attacks_stress` 定量核实,机制描述已修正)**:在极大 ε 下 PGD 不再产生有意义的鲁棒性度量,但**退化有两种形态,虚高只发生在 R50**——旧记录笼统写作"塌缩到多数类(PNEUMONIA)"是错的,那只对 R50 成立。
+
+   | 模型 | @8/255 | @16/255 | **@32/255** | **@64/255** | 大 ε 下 adv 预测分布 |
+   |---|---|---|---|---|---|
+   | R18 | 0.000 | 0.000 | 0.000 | 0.013 | 79% NORMAL |
+   | R34 | 0.000 | 0.000 | 0.000 | 0.000 | 77% NORMAL |
+   | **R50** | **0.255** | **0.619** | **0.619** | **0.619** | **100% PNEUMONIA** |
+   | R101 | 0.000 | 0.000 | 0.000 | 0.000 | 77% NORMAL |
+   | R152 | 0.000 | 0.000 | 0.008 | 0.000 | 79% NORMAL |
+
+   - **完全反转(R18/R34/R101/R152)**:adv 预测分布恰为 clean 分布的镜像,例如 R34 `clean {NORMAL 143, PNEUMONIA 481}` → `adv {NORMAL 481, PNEUMONIA 143}`(R101 同,R18 为 129/495 → 495/129)。凡 clean 正确者攻击后全错 → full robust acc 归零,**无虚高**。注意这四个模型塌向的是**少数类 NORMAL**,不是多数类。
+   - **单类塌缩(仅 R50)**:adv 预测 100% 为 PNEUMONIA(624/624)。于是 390 个 PNEUMONIA 真样本中 clean 正确的那 386 个仍被计为"正确" → full robust acc 虚假稳定在 **386/624 = 0.619**。**最硬的证据是那条平台线**:16 → 32 → 64/255 三点恒为 0.619,ε 翻 4 倍而鲁棒性纹丝不动,真实攻击不可能如此。
+
+   → 处置不变:**PGD 标准曲线裁到 ≤0.3/255**;FGSM 保留全程;AT 对比柱的 R50 标准值需脚注说明。理由较此前更硬(多了 32/255 与 64/255 两个支撑点)。
+   → 数据:`results/chest_xray_pneumonia/{model}/robustness/seed42/robustness_attacks_stress_max1024.json`(5 个 ResNet,seed42;DeiT-S/ConvNeXt-T 未跑,§6.1 只讨论 ResNet 阶梯)。**无任何出图脚本消费 `attacks_stress`,仅作正文/附录证据。**
+   → 与 H1 自洽:R50 本就是 clean 最高(0.869)却在小 ε 最脆弱(0.021)的异常点,现又是唯一一个大 ε 虚高者,可在 Discussion 串成一条线索。
 2. **AutoAttack 对二分类不适用**:ART 的 APGD-DLR 损失需 ≥3 类,二分类报 `index -3 is out of bounds for dimension 1 with size 2`,且极慢(APGD-CE 单模型 ~33min)。→ `create_defense_eval_attacks` 已改为 **nb_classes<3 自动跳过**;二分类强评估=PGD-50+5重启。OCT(4 类)将启用。需 `pip install multiprocess`。
 3. **图脚本曾有取整 bug**:`_parse_eps_255` 把 eps*255 取整,导致 fine 的 0.05/0.1/0.15 全 round 成 0 互相覆盖 → 已改浮点 + x 轴 log。
 4. **AT 训练量误限**:`evaluate_defense` 原 `--max-samples` 同时限制了训练数据 → 已解耦,正式 AT 用完整训练集,`--max-samples` 只限评估子集。

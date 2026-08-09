@@ -1,0 +1,51 @@
+{
+  "_meta": {
+    "schema_version": 3,
+    "created_at": "2026-06-19T03:31:00.896560",
+    "confidence_type": "softmax_probability"
+  },
+  "accuracy": 0.8221153846153846,
+  "balanced_accuracy": 0.7645299145299145,
+  "roc_auc": 0.9590346263423186,
+  "macro": {
+    "precision": 0.8824680365658518,
+    "recall": 0.7645299145299145,
+    "f1": 0.7836899255793909
+  },
+  "weighted": {
+    "precision": 0.8570220535813305,
+    "recall": 0.8221153846153846,
+    "f1": 0.8064822130684214
+  },
+  "confusion_matrix": [
+    [
+      125,
+      109
+    ],
+    [
+      2,
+      388
+    ]
+  ],
+  "ece": 0.14269730668419447,
+  "num_samples": 624,
+  "per_class": {
+    "NORMAL": {
+      "accuracy": 0.5341880341880342,
+      "recall": 0.5341880341880342,
+      "precision": 0.984251968503937,
+      "f1": 0.6925207756232687,
+      "count": 234
+    },
+    "PNEUMONIA": {
+      "accuracy": 0.9948717948717949,
+      "recall": 0.9948717948717949,
+      "precision": 0.7806841046277666,
+      "f1": 0.874859075535513,
+      "count": 390
+    }
+  },
+  "dataset": "chest_xray_pneumonia",
+  "model": "resnet101",
+  "checkpoint": "checkpoints\\chest_xray_pneumonia_resnet101_seed43.pth"
+}

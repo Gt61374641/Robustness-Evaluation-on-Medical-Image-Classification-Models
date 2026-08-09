@@ -1,0 +1,51 @@
+{
+  "_meta": {
+    "schema_version": 3,
+    "created_at": "2026-07-10T20:18:41.795431",
+    "confidence_type": "softmax_probability"
+  },
+  "accuracy": 0.8557692307692307,
+  "balanced_accuracy": 0.8102564102564103,
+  "roc_auc": 0.9545748411133026,
+  "macro": {
+    "precision": 0.8982278481012658,
+    "recall": 0.8102564102564103,
+    "f1": 0.8307291666666667
+  },
+  "weighted": {
+    "precision": 0.8777848101265824,
+    "recall": 0.8557692307692307,
+    "f1": 0.8470052083333334
+  },
+  "confusion_matrix": [
+    [
+      147,
+      87
+    ],
+    [
+      3,
+      387
+    ]
+  ],
+  "ece": 0.10848698851007678,
+  "num_samples": 624,
+  "per_class": {
+    "NORMAL": {
+      "accuracy": 0.6282051282051282,
+      "recall": 0.6282051282051282,
+      "precision": 0.98,
+      "f1": 0.765625,
+      "count": 234
+    },
+    "PNEUMONIA": {
+      "accuracy": 0.9923076923076923,
+      "recall": 0.9923076923076923,
+      "precision": 0.8164556962025317,
+      "f1": 0.8958333333333334,
+      "count": 390
+    }
+  },
+  "dataset": "chest_xray_pneumonia",
+  "model": "deit_small",
+  "checkpoint": "checkpoints/chest_xray_pneumonia_deit_small_seed44.pth"
+}

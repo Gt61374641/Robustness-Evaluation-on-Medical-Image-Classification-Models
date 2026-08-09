@@ -1,0 +1,51 @@
+{
+  "_meta": {
+    "schema_version": 3,
+    "created_at": "2026-06-23T04:55:42.697926",
+    "confidence_type": "softmax_probability"
+  },
+  "accuracy": 0.9710768028141489,
+  "balanced_accuracy": 0.970952445453529,
+  "roc_auc": 0.9937853143785961,
+  "macro": {
+    "precision": 0.9708990748205306,
+    "recall": 0.970952445453529,
+    "f1": 0.9709256095242512
+  },
+  "weighted": {
+    "precision": 0.9710787399039975,
+    "recall": 0.9710768028141489,
+    "f1": 0.9710776222899749
+  },
+  "confusion_matrix": [
+    [
+      2300,
+      73
+    ],
+    [
+      75,
+      2669
+    ]
+  ],
+  "ece": 0.011639488996740907,
+  "num_samples": 5117,
+  "per_class": {
+    "Parasitized": {
+      "accuracy": 0.9692372524230931,
+      "recall": 0.9692372524230931,
+      "precision": 0.968421052631579,
+      "f1": 0.9688289806234204,
+      "count": 2373
+    },
+    "Uninfected": {
+      "accuracy": 0.972667638483965,
+      "recall": 0.972667638483965,
+      "precision": 0.9733770970094822,
+      "f1": 0.9730222384250821,
+      "count": 2744
+    }
+  },
+  "dataset": "malaria",
+  "model": "resnet34",
+  "checkpoint": "checkpoints/malaria_resnet34_seed42.pth"
+}

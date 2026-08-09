@@ -1,0 +1,18 @@
+level,area,item,detail,path
+WARN,Defense collapse,chest_xray_pneumonia/resnet18/PGD-AT/seed42,collapsed or robust@8=0.0000,results/chest_xray_pneumonia/resnet18/defense_PGD-AT/seed42/defense_results_max1024.json
+WARN,Defense collapse,chest_xray_pneumonia/resnet18/PGD-AT/seed43,collapsed or robust@8=0.0000,results/chest_xray_pneumonia/resnet18/defense_PGD-AT/seed43/defense_results_max1024.json
+WARN,Defense collapse,chest_xray_pneumonia/resnet50/PGD-AT/seed44,collapsed or robust@8=0.0897,results/chest_xray_pneumonia/resnet50/defense_PGD-AT/seed44/defense_results_max1024.json
+WARN,Defense collapse,oct2017/resnet50/PGD-AT/seed44,collapsed or robust@8=0.0010,results/oct2017/resnet50/defense_PGD-AT/seed44/defense_results_max1024.json
+INFO,Optional cells,oct2017/resnet152/TRADES,method diagnostic not in current scope,
+INFO,Optional cells,oct2017/resnet152/MART,method diagnostic not in current scope,
+INFO,Optional cells,malaria/resnet34/TRADES,secondary dataset / collapsed PGD-AT point,
+INFO,Optional cells,malaria/resnet34/MART,secondary dataset / collapsed PGD-AT point,
+INFO,Optional cells,malaria/resnet101/TRADES,not part of three-method main evidence,
+INFO,Optional cells,malaria/resnet101/MART,not part of three-method main evidence,
+INFO,Optional cells,oct2017/resnet18/TRADES,secondary dataset / not part of method evidence,
+INFO,Optional cells,oct2017/resnet18/MART,secondary dataset / not part of method evidence,
+INFO,Optional cells,oct2017/resnet34/TRADES,secondary dataset / collapsed PGD-AT point,
+INFO,Optional cells,oct2017/resnet34/MART,secondary dataset / collapsed PGD-AT point,
+INFO,Optional cells,oct2017/resnet101/TRADES,secondary dataset / collapsed PGD-AT point,
+INFO,Optional cells,oct2017/resnet101/MART,secondary dataset / collapsed PGD-AT point,
+WARN,Rescue collapse,chest_xray_pneumonia/resnet18/PGD-AT-rescue/seed42,still collapsed or robust@8=0.0000,results/chest_xray_pneumonia/resnet18/defense_PGD-AT-rescue/seed42/defense_results_max1024.json

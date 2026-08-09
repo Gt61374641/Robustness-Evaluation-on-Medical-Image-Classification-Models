@@ -1,0 +1,104 @@
+_meta:
+  git_commit: 2728275c
+  timestamp: '2026-06-23T04:58:53.670001'
+attacks_extended:
+- eps:
+  - 0.015686
+  - 0.031373
+  name: AutoPGD
+- eps:
+  - 0.015686
+  - 0.031373
+  max_queries: 1000
+  name: SquareAttack
+attacks_fine:
+- eps:
+  - 0.000196
+  - 0.000392
+  - 0.000588
+  - 0.000784
+  - 0.00098
+  - 0.001961
+  - 0.003922
+  name: FGSM
+- eps:
+  - 0.000196
+  - 0.000392
+  - 0.000588
+  - 0.000784
+  - 0.00098
+  - 0.001961
+  - 0.003922
+  max_iter: 20
+  name: PGD
+  num_random_init: 1
+attacks_main:
+- eps:
+  - 0.003922
+  - 0.007843
+  - 0.015686
+  - 0.031373
+  - 0.062745
+  name: FGSM
+- eps:
+  - 0.003922
+  - 0.007843
+  - 0.015686
+  - 0.031373
+  - 0.062745
+  max_iter: 20
+  name: PGD
+  num_random_init: 1
+attacks_stress:
+- eps:
+  - 0.12549
+  - 0.25098
+  name: FGSM
+- eps:
+  - 0.12549
+  - 0.25098
+  max_iter: 20
+  name: PGD
+  num_random_init: 1
+data:
+  batch_size: 32
+  data_dir: ./data
+  dataset: malaria
+  img_size: 224
+  num_workers: 4
+defense_eval:
+  autoattack:
+    eps:
+    - 0.031373
+  pgd_eval:
+    eps:
+    - 0.003922
+    - 0.007843
+    - 0.015686
+    - 0.031373
+    - 0.062745
+    max_iter: 50
+    num_random_init: 5
+defenses_main:
+- batch_size: 32
+  eps: 0.031373
+  eps_step: 0.007843
+  max_iter: 7
+  name: PGD-AT
+  nb_epochs: 15
+model:
+  name: resnet34
+  num_classes: null
+  pretrained: true
+seed: 42
+train:
+  accumulation_steps: 1
+  amp: true
+  amp_dtype: float16
+  class_balance:
+    loss: none
+    sampler: none
+  epochs: 15
+  lr: 0.0001
+  scheduler: cosine
+  weight_decay: 0.0001

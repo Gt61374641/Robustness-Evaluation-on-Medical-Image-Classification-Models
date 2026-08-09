@@ -1,0 +1,81 @@
+{
+  "_meta": {
+    "schema_version": 3,
+    "created_at": "2026-06-23T07:12:17.858346",
+    "confidence_type": "softmax_probability"
+  },
+  "accuracy": 0.993801652892562,
+  "balanced_accuracy": 0.993801652892562,
+  "roc_auc": 0.999947351046149,
+  "macro": {
+    "precision": 0.9938267423151833,
+    "recall": 0.993801652892562,
+    "f1": 0.9938015738390704
+  },
+  "weighted": {
+    "precision": 0.9938267423151832,
+    "recall": 0.993801652892562,
+    "f1": 0.9938015738390704
+  },
+  "confusion_matrix": [
+    [
+      239,
+      3,
+      0,
+      0
+    ],
+    [
+      0,
+      242,
+      0,
+      0
+    ],
+    [
+      2,
+      0,
+      240,
+      0
+    ],
+    [
+      0,
+      0,
+      1,
+      241
+    ]
+  ],
+  "ece": 0.02031973158278741,
+  "num_samples": 968,
+  "per_class": {
+    "CNV": {
+      "accuracy": 0.987603305785124,
+      "recall": 0.987603305785124,
+      "precision": 0.991701244813278,
+      "f1": 0.989648033126294,
+      "count": 242
+    },
+    "DME": {
+      "accuracy": 1.0,
+      "recall": 1.0,
+      "precision": 0.9877551020408163,
+      "f1": 0.9938398357289527,
+      "count": 242
+    },
+    "DRUSEN": {
+      "accuracy": 0.9917355371900827,
+      "recall": 0.9917355371900827,
+      "precision": 0.995850622406639,
+      "f1": 0.9937888198757764,
+      "count": 242
+    },
+    "NORMAL": {
+      "accuracy": 0.9958677685950413,
+      "recall": 0.9958677685950413,
+      "precision": 1.0,
+      "f1": 0.9979296066252588,
+      "count": 242
+    }
+  },
+  "dataset": "oct2017",
+  "model": "resnet18",
+  "checkpoint": "checkpoints/oct2017_resnet18_seed42.pth"
+}

@@ -1,5 +1,4 @@
 data/
-results/
 checkpoints/
 figures/*
 tmp/
@@ -39,7 +38,7 @@ _archive/
 thesis/
 paper/
 deliverables/
-reports/
+/reports/
 nature-skills/
 .claude/
 *.docx

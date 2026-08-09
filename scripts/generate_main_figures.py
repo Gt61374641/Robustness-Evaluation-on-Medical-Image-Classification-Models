@@ -179,14 +179,30 @@ def fig_defense_methods(json_name="defense_methods.json", out_name="defense_meth
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 3.0))
     partial_seen = False
 
+    def _cell(rec, field):
+        """Value, spread and converged-seed count for one bar.
+
+        Adversarial training here is bimodal, so a bar must show the value
+        conditional on the run having converged; averaging in the collapsed
+        seeds would draw a height that no run ever produced. A Standard model
+        was never adversarially trained, so it keeps its plain seed-mean.
+        """
+        if rec["method"] == "Standard":
+            n = rec.get("n_seeds", 1)
+            return rec.get(field), rec.get(field + "_std") or 0, n, n
+        return (rec.get(field + "_success"),
+                rec.get(field + "_success_std") or 0,
+                rec.get("n_success", 0), rec.get("n_seeds", 1))
+
     def grouped(ax, field, ylabel, mark_collapse):
         nonlocal partial_seen
         for i, meth in enumerate(methods):
-            vals = [(idx[(m, meth)][field] or 0) * 100 for m in models]
-            errs = [(idx[(m, meth)].get(field + "_std") or 0) * 100 for m in models]
-            col = [idx[(m, meth)]["collapsed"] for m in models]
-            ncol = [idx[(m, meth)].get("n_collapsed", 0) for m in models]
-            nsd = [idx[(m, meth)].get("n_seeds", 1) for m in models]
+            cells = [_cell(idx[(m, meth)], field) for m in models]
+            vals = [(v or 0) * 100 for v, _, _, _ in cells]
+            errs = [(e or 0) * 100 for _, e, _, _ in cells]
+            col = [k == 0 for _, _, k, _ in cells]
+            ncol = [ns - k for _, _, k, ns in cells]
+            nsd = [ns for _, _, _, ns in cells]
             offset = (i - (len(methods) - 1) / 2) * w
             for j, (xp, yv, ye, c, nc, ns) in enumerate(
                     zip(x, vals, errs, col, ncol, nsd)):
@@ -282,6 +298,7 @@ def main():
     fig_h1_ushape()
     fig_defense_methods()  # chest (primary)
     fig_defense_methods("defense_methods_malaria.json", "defense_methods_malaria")
+    fig_defense_methods("defense_methods_oct2017.json", "defense_methods_oct2017")
     fig_attack_methods()
 
 

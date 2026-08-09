@@ -84,8 +84,12 @@ def main():
             print(f"  ... (+{len(items) - cap} more)")
 
     show("NEW (copied)" if args.apply else "NEW (would copy)", added)
-    show("OVERWRITTEN" if args.apply else "WOULD OVERWRITE (needs --force)",
-         overwritten if args.force else skipped)
+    # The title has to follow --force, not --apply: without --force these files
+    # are left alone, and calling that list "OVERWRITTEN" reads as data loss.
+    if args.force:
+        show("OVERWRITTEN" if args.apply else "WOULD OVERWRITE", overwritten)
+    else:
+        show("SKIPPED (already present locally; --force would overwrite)", skipped)
 
     mode = "APPLIED" if args.apply else "DRY-RUN (nothing written; add --apply)"
     print(f"\n==> {mode}. new={len(added)} "

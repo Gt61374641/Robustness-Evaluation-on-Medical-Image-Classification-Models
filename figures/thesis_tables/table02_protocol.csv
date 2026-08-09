@@ -1,0 +1,9 @@
+component,setting,details
+Model,ResNet-18 / 34 / 50 / 101 / 152,11.7 / 21.8 / 25.6 / 44.5 / 60.2 M parameters; ImageNet-1k initialisation
+Cross-architecture extension,DeiT-S; ConvNeXt-T,22.1 M; 28.6 M parameters; Chest X-ray case study only
+Standard training,Adam optimiser; cosine schedule; LR 1e-4; WD 1e-4,20 / 15 / 10 epochs for Chest X-ray / Malaria / OCT; three seeds
+Core attacks,"FGSM and PGD-20, L-infinity","epsilon={0.1,0.15,0.2,0.25,0.5,1,2,4,8,16}/255; PGD one random start"
+Attack audit,Per-epsilon minimum then cumulative-minimum envelope,Used for headline AUC/critical epsilon; raw PGD retained for audit
+Defences (held fixed),PGD-AT; TRADES; MART,Training epsilon=8/255; eps_step=2/255; PGD-7 inner loop; beta=6 for TRADES/MART
+Defences (varies by method),Batch size; warm-up schedule,Batch 16/32/32 for PGD-AT and 8/16/16 for TRADES and MART on Chest X-ray/Malaria/OCT; eps+LR warm-up of 5/3 epochs for PGD-AT and MART; none for TRADES; defence epochs 20/15/20
+Defence evaluation,"PGD-50, five restarts, L-infinity","Headline robust accuracy at 8/255; all seeds retained, including collapse"

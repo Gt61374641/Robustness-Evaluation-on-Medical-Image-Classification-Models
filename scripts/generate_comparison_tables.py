@@ -49,37 +49,55 @@ def _save(raw, formatted, out_dir, name):
 
 
 def defense_methods_table(json_name="defense_methods.json"):
+    """Standard/PGD-AT/TRADES/MART for one dataset.
+
+    Robustness is reported conditional on the run having converged, with the
+    success count beside it. Averaging across collapsed and converged seeds
+    invents values that never occurred -- oct R152 PGD-AT would read 30.3%,
+    the mean of {2.5, 84.6, 3.9}.
+    """
     d = json.load(open(DATA / json_name))
     rows = []
     for r in d["rows"]:
-        ns, nc = r.get("n_seeds", 1), r.get("n_collapsed", 0)
+        ns = r.get("n_seeds", 1)
+        standard = r["method"] == "Standard"
+        n_ok = r.get("n_success", 0)
         rows.append({
             "model": DISP.get(r["model"], r["model"]),
             "method": r["method"],
-            "clean_accuracy": r["clean"],
-            "robust_acc_pgd8_full": r["rob8"],
-            "robust_acc_pgd8_std": r.get("rob8_std"),
+            # A standard model was never adversarially trained, so "converged"
+            # does not apply; report its plain seed-mean.
+            "clean_accuracy": r["clean"] if standard else r.get("clean_success"),
+            "robust_acc_pgd8_full": r["rob8"] if standard else r.get("rob8_success"),
+            "robust_acc_pgd8_std": (r.get("rob8_std") if standard
+                                    else r.get("rob8_success_std")),
             "n_seeds": ns,
-            "seeds_collapsed": f"{nc}/{ns}" if nc else "",
-            "collapsed": r["collapsed"],
+            "seeds_trained": "-" if standard else f"{n_ok}/{ns}",
         })
     raw = pd.DataFrame(rows)
-    fmt = raw.copy()
-    fmt["clean_accuracy"] = fmt["clean_accuracy"].map(lambda v: _pct(v))
-    # robust@8 as mean±std when multi-seed, else plain mean
+
     def _rob(row):
-        m = _pct(row["robust_acc_pgd8_full"])
-        s = row["robust_acc_pgd8_std"]
-        if m and row["n_seeds"] > 1 and s is not None and not pd.isna(s):
+        v = row["robust_acc_pgd8_full"]
+        if v is None or pd.isna(v):
+            return "never trained"
+        m, s = _pct(v), row["robust_acc_pgd8_std"]
+        # Quote a spread only when at least two runs contributed to it.
+        n = row["n_seeds"] if row["seeds_trained"] == "-" else \
+            int(row["seeds_trained"].split("/")[0])
+        if n > 1 and s is not None and not pd.isna(s):
             return f"{m}±{float(s) * 100:.1f}"
         return m
-    fmt["robust_acc_pgd8_full"] = fmt.apply(_rob, axis=1)
+
+    fmt = raw.copy()
+    fmt["robust_acc_pgd8_full"] = raw.apply(_rob, axis=1)
+    fmt["clean_accuracy"] = fmt["clean_accuracy"].map(
+        lambda v: "-" if v is None or pd.isna(v) else _pct(v))
     fmt = fmt.drop(columns=["robust_acc_pgd8_std"])
-    fmt["collapsed"] = fmt["collapsed"].map(lambda b: "yes" if b else "")
     fmt = fmt.rename(columns={
-        "clean_accuracy": "Clean (%)", "robust_acc_pgd8_full": "Robust@8 full (%)",
-        "n_seeds": "Seeds", "seeds_collapsed": "Collapsed seeds",
-        "model": "Model", "method": "Method", "collapsed": "Collapsed"})
+        "clean_accuracy": "Clean | trained (%)",
+        "robust_acc_pgd8_full": "Robust@8 | trained (%)",
+        "n_seeds": "Seeds", "seeds_trained": "Seeds trained",
+        "model": "Model", "method": "Method"})
     return raw, fmt, d.get("display", "Chest X-ray")
 
 
@@ -110,27 +128,53 @@ def attack_methods_table():
 
 
 def h2_ladder_table():
+    """H2 ladder reported as a success COUNT plus the value conditional on success.
+
+    PGD-AT here is bimodal -- a run either collapses to a constant classifier or
+    converges -- so a seed-mean mixes the two and lands on a value that never
+    occurred (oct R152: {0.025, 0.846, 0.039}, mean 0.303). The columns below
+    keep the two facts separate: how often it trained, and how good it was when
+    it did.
+    """
     d = json.load(open(DATA / "at_ladder_h2.json"))
     disp_ds = {r["dataset"]: r["dataset_display"] for r in d["rows"]}
     rows = []
     for r in d["rows"]:
+        n_ok, n = r.get("n_success", 0), r.get("n_seeds", 0)
         rows.append({
             "dataset": disp_ds[r["dataset"]],
             "model": DISP.get(r["model"], r["model"]),
             "params_m": r["params_m"],
-            "at_clean_accuracy": r["clean"],
-            "at_robust_acc_pgd8": r["robust8"],
-            "collapsed": r["collapsed"],
+            "seeds_trained": f"{n_ok}/{n}" if n else "-",
+            "at_clean_when_trained": r.get("clean_success"),
+            "at_robust8_when_trained": r.get("robust8_success"),
+            "at_robust8_sd": r.get("robust8_success_std"),
+            "regimes": ",".join(x or "-" for x in r.get("regimes", [])),
         })
     raw = pd.DataFrame(rows)
+
+    def _val(row):
+        v, sd, n_ok = (row["at_robust8_when_trained"], row["at_robust8_sd"],
+                       row["seeds_trained"])
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return "never trained"
+        s = _pct(v)
+        # Only quote a spread when more than one run contributed to it.
+        if sd and not pd.isna(sd) and not n_ok.startswith("1/"):
+            s += f" ± {sd * 100:.1f}"
+        return s
+
     fmt = raw.copy()
-    fmt["at_clean_accuracy"] = fmt["at_clean_accuracy"].map(lambda v: _pct(v))
-    fmt["at_robust_acc_pgd8"] = fmt["at_robust_acc_pgd8"].map(lambda v: _pct(v))
-    fmt["collapsed"] = fmt["collapsed"].map(lambda b: "yes" if b else "")
+    fmt["at_robust8_when_trained"] = raw.apply(_val, axis=1)
+    fmt["at_clean_when_trained"] = fmt["at_clean_when_trained"].map(
+        lambda v: "-" if v is None or pd.isna(v) else _pct(v))
+    fmt = fmt.drop(columns=["at_robust8_sd"])
     fmt = fmt.rename(columns={
         "dataset": "Dataset", "model": "Model", "params_m": "Params (M)",
-        "at_clean_accuracy": "AT clean (%)", "at_robust_acc_pgd8": "AT robust@8 (%)",
-        "collapsed": "Collapsed"})
+        "seeds_trained": "Seeds trained",
+        "at_clean_when_trained": "AT clean | trained (%)",
+        "at_robust8_when_trained": "AT robust@8 | trained (%)",
+        "regimes": "Per-seed regime"})
     return raw, fmt
 
 
@@ -175,6 +219,8 @@ def main():
     outputs += _save(araw, afmt, chest_dir, "table6_attack_methods")
     mraw, mfmt, _ = defense_methods_table("defense_methods_malaria.json")
     outputs += _save(mraw, mfmt, OUT / "malaria", "table5_defense_methods")
+    oraw, ofmt, _ = defense_methods_table("defense_methods_oct2017.json")
+    outputs += _save(oraw, ofmt, OUT / "oct2017", "table5_defense_methods")
     # H2 ladder spans all datasets
     hraw, hfmt = h2_ladder_table()
     outputs += _save(hraw, hfmt, OUT, "table8_h2_at_ladder")

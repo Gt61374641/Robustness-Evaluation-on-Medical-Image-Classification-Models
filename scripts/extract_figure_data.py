@@ -115,8 +115,39 @@ def fixed_eps_ushape(target=0.1):
     print("wrote h1_complexity_fixedeps.json")
 
 
+# Adversarial training on a given (dataset, model, method) does not land on a
+# continuum: a run either collapses to a constant classifier (rob@8 ~ 0) or
+# converges to a genuinely robust model, with few runs in between. A seed-mean
+# over that mixture describes no real run -- e.g. oct R152 PGD-AT reads
+# {0.025, 0.846, 0.039}, whose mean 0.303 never occurred. So classify each run
+# into a regime and report the success COUNT alongside the value conditional on
+# success. Thresholds are on PGD@8/255 full robust accuracy.
+COLLAPSE_MAX = 0.05   # below this (or a constant clean predictor) -> collapsed
+SUCCESS_MIN = 0.50    # above this -> trained; in between -> partial
+
+
+def _regime(rob8, constant_clean, clean=None):
+    """'collapsed' | 'partial' | 'success' | None (no data).
+
+    A collapsed run can score ABOVE SUCCESS_MIN, so the thresholds alone are not
+    enough: chest DeiT-S/ConvNeXt-T under TRADES both predict PNEUMONIA for all
+    624 test images, which scores clean = rob@8 = 0.625 (the majority-class
+    rate) and would otherwise read as a success. Two independent signals catch
+    that -- a constant clean prediction, and an attack that achieved nothing.
+    """
+    if rob8 is None:
+        return None
+    # PGD-50 with 5 restarts at 8/255 leaving robustness equal to clean accuracy
+    # means no sample was flipped, which no genuinely robust model here does
+    # (the strongest, oct R152 MART, drops 0.965 -> 0.892).
+    attack_did_nothing = (clean is not None and abs(rob8 - clean) < 0.005)
+    if constant_clean or attack_did_nothing or rob8 < COLLAPSE_MAX:
+        return "collapsed"
+    return "success" if rob8 > SUCCESS_MIN else "partial"
+
+
 def _defense_clean_rob8(ds, model, defense, seed="seed42"):
-    """(clean_defended, robust@8 full/conditional, asr, collapsed) for a defense JSON."""
+    """(clean_defended, robust@8 full/conditional, asr, collapsed, regime)."""
     f = ROOT / "results" / ds / model / f"defense_{defense}" / seed / "defense_results_max1024.json"
     if not f.exists():
         return None
@@ -133,42 +164,75 @@ def _defense_clean_rob8(ds, model, defense, seed="seed42"):
     kk = [k for k in r if k.startswith("PGD")]
     constant = False
     if kk:
-        fr = [x["fraction"] for x in r[kk[0]]["pred_distribution"]["clean"].values()]
-        constant = max(fr) >= 0.99
-    collapsed = bool(constant or (rob8 is not None and rob8 < 0.02))
+        # Tolerate a JSON without the distribution block rather than crashing:
+        # _regime() has a second, independent collapse signal to fall back on.
+        dist = r[kk[0]].get("pred_distribution", {}).get("clean")
+        if dist:
+            constant = max(x["fraction"] for x in dist.values()) >= 0.99
+    regime = _regime(rob8, constant, clean)
     return {"clean": clean, "rob8": rob8, "rob8_cond": rob8_cond, "asr8": asr8,
-            "collapsed": collapsed}
+            "collapsed": regime == "collapsed", "regime": regime}
 
 
 def _standard_clean_rob8(ds, model, seed="seed42"):
-    """Standard (undefended) model clean + PGD robust@8 (strong sweep)."""
+    """Standard (undefended) model clean accuracy + AUDITED robust acc @8/255.
+
+    This feeds the undefended baseline bar of the defence figures, so it has to
+    be the same audited quantity the rest of the thesis reports rather than a
+    raw single-attack reading. The audit of the budget sweep is applied here
+    too: per budget take the lower value over the attack set (FGSM, PGD-20),
+    then take a cumulative minimum over increasing budget, which for the 8/255
+    bar is simply the minimum over every budget up to 8/255.
+
+    Without the audit the chest ResNet-50 baseline inherits the seed-42 PGD-20
+    optimisation failure -- full robust accuracy 0.255 at 8/255 against 0.000 at
+    every smaller budget -- and the figure would show an undefended bar at
+    roughly 8% where Table 3 and Section 4.2 both report 0.000.
+    """
     clean = None
     cf = ROOT / "results" / ds / model / "clean" / seed / "clean_results.json"
     if cf.exists():
         cj = json.load(open(cf))
         clean = cj.get("accuracy") or cj.get("clean_accuracy") or \
             cj.get("metrics", {}).get("accuracy")
-    rob8 = rob8_cond = asr8 = None
-    for sec in ("main", "fine"):
+    # {eps255: lower of FGSM and PGD} for every budget at or below 8/255.
+    full, cond = {}, {}
+    for sec in ("fine", "main"):
         r = _rob_json(ds, model, seed, sec)
         if not r:
             continue
         for k, v in r.items():
-            if k.startswith("PGD") and isinstance(v, dict) and "robust_accuracy" in v:
-                if abs((eps255(k) or 0) - 8) < 0.5:
-                    rob8 = v["robust_accuracy"]["full_robust_accuracy"]
-                    rob8_cond = v["robust_accuracy"].get("conditional_robust_accuracy")
-                    asr8 = v.get("asr")
-    return {"clean": clean, "rob8": rob8, "rob8_cond": rob8_cond, "asr8": asr8,
-            "collapsed": False}
+            if not (isinstance(v, dict) and "robust_accuracy" in v):
+                continue
+            if not (k.startswith("FGSM") or k.startswith("PGD")):
+                continue
+            e = eps255(k)
+            if e is None or e > 8.5:
+                continue
+            ra = v["robust_accuracy"]["full_robust_accuracy"]
+            rc = v["robust_accuracy"].get("conditional_robust_accuracy")
+            if ra is not None:
+                full[e] = min(full.get(e, ra), ra)
+            if rc is not None:
+                cond[e] = min(cond.get(e, rc), rc)
+    rob8 = min(full.values()) if full else None
+    rob8_cond = min(cond.values()) if cond else None
+    # A standard (non-AT) model has no AT-convergence regime to report.
+    return {"clean": clean, "rob8": rob8, "rob8_cond": rob8_cond, "asr8": None,
+            "collapsed": False, "regime": None}
 
 
 def _agg_defense(ds, model, method, seeds):
     """Aggregate one (model, method) cell over seeds.
 
-    Keeps `rob8`/`clean` as the seed-mean (back-compat: the R backend reads
-    those scalars) and adds `rob8_std`/`clean_std`/`n_seeds` for error bars.
-    `collapsed` = majority vote over the per-seed collapse flags.
+    Keeps `rob8`/`clean` as the seed-mean (back-compat: the R backend and the
+    older tables read those scalars) and adds `rob8_std`/`clean_std`/`n_seeds`
+    for error bars.
+
+    Also adds the regime breakdown, which is what should actually be reported:
+    `n_success`/`n_seeds` runs converged, and `rob8_success` is the mean over
+    only those. For a bimodal cell the seed-mean `rob8` is misleading and
+    `rob8_success` + `n_success` is the honest summary.
     """
     recs = []
     for s in seeds:
@@ -178,7 +242,10 @@ def _agg_defense(ds, model, method, seeds):
             recs.append(rec)
     if not recs:
         return {"clean": None, "rob8": None, "rob8_std": 0.0, "clean_std": 0.0,
-                "n_seeds": 0, "collapsed": False, "seeds": []}
+                "n_seeds": 0, "collapsed": False, "seeds": [],
+                "regimes": [], "n_success": 0, "n_collapsed": 0,
+                "rob8_success": None, "rob8_success_std": 0.0,
+                "clean_success": None}
 
     def stat(key):
         vals = [r[key] for r in recs if r.get(key) is not None]
@@ -189,10 +256,24 @@ def _agg_defense(ds, model, method, seeds):
     rob8_m, rob8_s = stat("rob8")
     clean_m, clean_s = stat("clean")
     n_coll = sum(1 for r in recs if r.get("collapsed"))
+    regimes = [r.get("regime") for r in recs]
+
+    # Value conditional on the run having converged.
+    ok = [r for r in recs if r.get("regime") == "success"]
+    ok_rob = [r["rob8"] for r in ok if r.get("rob8") is not None]
+    ok_clean = [r["clean"] for r in ok if r.get("clean") is not None]
+    rob8_ok = float(np.mean(ok_rob)) if ok_rob else None
+    rob8_ok_s = float(np.std(ok_rob)) if len(ok_rob) > 1 else 0.0
+
     return {"clean": clean_m, "clean_std": clean_s,
             "rob8": rob8_m, "rob8_std": rob8_s,
             "n_seeds": len(recs), "n_collapsed": n_coll,
             "collapsed": n_coll * 2 > len(recs),
+            "regimes": regimes,
+            "n_success": len(ok),
+            "rob8_success": rob8_ok, "rob8_success_std": rob8_ok_s,
+            "clean_success": float(np.mean(ok_clean)) if ok_clean else None,
+            "clean_success_std": float(np.std(ok_clean)) if len(ok_clean) > 1 else 0.0,
             "seeds": [s for s in seeds]}
 
 
@@ -241,9 +322,18 @@ def at_ladder_h2():
                 "clean": rec["clean"], "clean_std": rec["clean_std"],
                 "robust8": rec["rob8"], "robust8_std": rec["rob8_std"],
                 "n_seeds": rec["n_seeds"], "collapsed": rec["collapsed"],
+                # Report these, not the seed-mean: PGD-AT is bimodal here.
+                "n_success": rec["n_success"], "regimes": rec["regimes"],
+                "robust8_success": rec["rob8_success"],
+                "robust8_success_std": rec["rob8_success_std"],
+                "clean_success": rec["clean_success"],
             })
     out = {
-        "metric": "PGD@8/255 full robust accuracy (PGD-AT, seed-mean over 42/43/44)",
+        "metric": "PGD@8/255 full robust accuracy (PGD-AT). Report "
+                  "n_success/n_seeds together with robust8_success; the "
+                  "seed-mean robust8 mixes collapsed and converged runs.",
+        "regime_thresholds": {"collapse_max": COLLAPSE_MAX,
+                              "success_min": SUCCESS_MIN},
         "protocol": "unified PGD-AT (eps_warmup=5, lr_warmup=3, nb_epochs aligned); "
                     "PGD-50+5restart strong eval",
         "ladder": LADDER, "params_m": PARAMS_M,
@@ -328,6 +418,9 @@ if __name__ == "__main__":
     defense_methods(ds="malaria", display="Malaria",
                     models=("resnet18", "resnet50", "resnet152"),
                     out_name="defense_methods_malaria.json")  # cross-dataset replication
+    defense_methods(ds="oct2017", display="OCT2017",
+                    models=("resnet18", "resnet50", "resnet152"),
+                    out_name="defense_methods_oct2017.json")  # third dataset (4-class)
     at_ladder_h2()
     at_rescue()
     attack_methods()

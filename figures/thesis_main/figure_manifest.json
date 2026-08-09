@@ -1,0 +1,208 @@
+{
+  "title": "A Systematic Evaluation of Adversarial Robustness in Medical Image Classification: Model Complexity, Imaging Modality, and Adversarial Training",
+  "audit_rule": "per-seed min(FGSM, PGD) at each epsilon, followed by cumulative minimum over epsilon",
+  "audit_statistics": {
+    "core_runs_expected": 45,
+    "core_runs_observed": 45,
+    "runs_with_monotonic_adjustment": 8,
+    "adjusted_seed_budget_observations": 10,
+    "largest_raw_pgd_rebound": 0.42992424242424243,
+    "defense_seed_rows": 99,
+    "defense_successful_seed_rows": 72
+  },
+  "figures": [
+    {
+      "number": 1,
+      "stem": "fig01_dataset_class_overview",
+      "caption": "Representative classes from the Chest X-ray, Malaria, and OCT2017 evaluation datasets. This descriptive overview establishes modality and label-space differences and is not used as quantitative evidence.",
+      "sources": [
+        "figures/qualitative/dataset_class_overview.png",
+        "figures/qualitative/dataset_class_overview.pdf",
+        "figures/qualitative/dataset_class_overview.svg"
+      ],
+      "formats": [
+        "fig01_dataset_class_overview.png",
+        "fig01_dataset_class_overview.pdf",
+        "fig01_dataset_class_overview.svg"
+      ]
+    },
+    {
+      "number": 2,
+      "stem": "fig02_evaluation_workflow",
+      "caption": "Unified evaluation workflow. The cross-dataset core comprises three imaging datasets, a five-depth ResNet ladder, matched FGSM/PGD budgets, audited robustness metrics, and three adversarial-training methods. DeiT-S, ConvNeXt-T, and the multi-attack suite are Chest X-ray case studies.",
+      "sources": [
+        "scripts/build_thesis_evidence_package.py"
+      ],
+      "formats": [
+        "fig02_evaluation_workflow.png",
+        "fig02_evaluation_workflow.pdf",
+        "fig02_evaluation_workflow.svg"
+      ]
+    },
+    {
+      "number": 3,
+      "stem": "fig03_audited_envelope_construction",
+      "caption": "Construction of the audited attack-set envelope, illustrated on Chest X-ray ResNet-50 at seed 42. Panel a shows the raw FGSM and PGD-20 curves with their per-budget minimum, which coincides with PGD at every budget in this run. Panel b applies the cumulative minimum over increasing budget, which is the step that removes the high-budget rebound. This run is an illustrative pathological example chosen because it carries the largest raw PGD rebound of the core sweep, not a representative one.",
+      "sources": [
+        "reports/thesis_evidence/audited_envelope_seed.csv"
+      ],
+      "formats": [
+        "fig03_audited_envelope_construction.png",
+        "fig03_audited_envelope_construction.pdf",
+        "fig03_audited_envelope_construction.svg"
+      ]
+    },
+    {
+      "number": 4,
+      "stem": "fig04_clean_performance",
+      "caption": "Clean test accuracy of the five ResNet depths across datasets. Points show the three-seed mean and error bars show one standard deviation.",
+      "sources": [
+        "reports/thesis_evidence/core_model_summary.csv"
+      ],
+      "formats": [
+        "fig04_clean_performance.png",
+        "fig04_clean_performance.pdf",
+        "fig04_clean_performance.svg"
+      ]
+    },
+    {
+      "number": 5,
+      "stem": "fig05_qualitative_attack_examples",
+      "caption": "Representative clean images, scaled perturbations, and PGD adversarial images for the three datasets. Perturbations are amplified for visibility; quantitative conclusions rely on the attack sweeps rather than visual salience.",
+      "sources": [
+        "figures/qualitative/qualitative_attack_examples.png",
+        "figures/qualitative/qualitative_attack_examples.pdf",
+        "figures/qualitative/qualitative_attack_examples.svg"
+      ],
+      "formats": [
+        "fig05_qualitative_attack_examples.png",
+        "fig05_qualitative_attack_examples.pdf",
+        "fig05_qualitative_attack_examples.svg"
+      ]
+    },
+    {
+      "number": 6,
+      "stem": "fig06_fgsm_robustness_curves",
+      "caption": "Observed FGSM conditional robust accuracy across perturbation budgets. Lines show three-seed means and shaded bands show descriptive 95% confidence intervals.",
+      "sources": [
+        "reports/thesis_evidence/attack_curve_seed.csv"
+      ],
+      "formats": [
+        "fig06_fgsm_robustness_curves.png",
+        "fig06_fgsm_robustness_curves.pdf",
+        "fig06_fgsm_robustness_curves.svg"
+      ]
+    },
+    {
+      "number": 7,
+      "stem": "fig07_audited_attack_envelope",
+      "caption": "Conservative attack-ensemble robustness curves. For each seed and budget, the lower of FGSM and PGD conditional robust accuracy is retained, followed by a cumulative minimum over increasing budgets. This prevents high-budget PGD optimisation failures from being interpreted as recovered robustness.",
+      "sources": [
+        "reports/thesis_evidence/audited_envelope_seed.csv"
+      ],
+      "formats": [
+        "fig07_audited_attack_envelope.png",
+        "fig07_audited_attack_envelope.pdf",
+        "fig07_audited_attack_envelope.svg"
+      ]
+    },
+    {
+      "number": 8,
+      "stem": "fig08_complexity_vs_robustness",
+      "caption": "Model parameters versus normalised log-epsilon robustness AUC and the critical perturbation budget at which audited conditional robust accuracy first falls to 0.5. Spearman correlations are descriptive; upward triangles denote right-censoring above 16/255.",
+      "sources": [
+        "reports/thesis_evidence/core_model_summary.csv"
+      ],
+      "formats": [
+        "fig08_complexity_vs_robustness.png",
+        "fig08_complexity_vs_robustness.pdf",
+        "fig08_complexity_vs_robustness.svg"
+      ]
+    },
+    {
+      "number": 9,
+      "stem": "fig09_chest_cross_architecture",
+      "caption": "Chest X-ray cross-architecture extension. Clean accuracy and audited robustness AUC are compared for the ResNet ladder, DeiT-S, and ConvNeXt-T. This single-dataset extension is a case study and is not pooled with the cross-dataset ResNet analysis.",
+      "sources": [
+        "reports/thesis_evidence/chest_cross_architecture_summary.csv"
+      ],
+      "formats": [
+        "fig09_chest_cross_architecture.png",
+        "fig09_chest_cross_architecture.pdf",
+        "fig09_chest_cross_architecture.svg"
+      ]
+    },
+    {
+      "number": 10,
+      "stem": "fig10_chest_multi_attack_audit",
+      "caption": "Chest X-ray multi-attack audit for seed 42. Bounded-attack robust accuracy and CW/DeepFool minimal L2 perturbations are shown in separate panels because the metrics are not directly comparable.",
+      "sources": [
+        "figures/data/attack_methods.json"
+      ],
+      "formats": [
+        "fig10_chest_multi_attack_audit.png",
+        "fig10_chest_multi_attack_audit.pdf",
+        "fig10_chest_multi_attack_audit.svg"
+      ]
+    },
+    {
+      "number": 11,
+      "stem": "fig11_chest_defense_comparison",
+      "caption": "Chest X-ray defence comparison for representative ResNet depths. All-seed estimates retain collapsed runs; successful-seed summaries must be accompanied by the success count.",
+      "sources": [
+        "figures/main/defense_methods.png",
+        "figures/main/defense_methods.pdf",
+        "figures/main/defense_methods.svg"
+      ],
+      "formats": [
+        "fig11_chest_defense_comparison.png",
+        "fig11_chest_defense_comparison.pdf",
+        "fig11_chest_defense_comparison.svg"
+      ]
+    },
+    {
+      "number": 12,
+      "stem": "fig12_malaria_defense_comparison",
+      "caption": "Malaria defence comparison for representative ResNet depths under the same reporting rule.",
+      "sources": [
+        "figures/main/defense_methods_malaria.png",
+        "figures/main/defense_methods_malaria.pdf",
+        "figures/main/defense_methods_malaria.svg"
+      ],
+      "formats": [
+        "fig12_malaria_defense_comparison.png",
+        "fig12_malaria_defense_comparison.pdf",
+        "fig12_malaria_defense_comparison.svg"
+      ]
+    },
+    {
+      "number": 13,
+      "stem": "fig13_oct_defense_comparison",
+      "caption": "OCT defence comparison for representative ResNet depths under the same reporting rule.",
+      "sources": [
+        "figures/main/defense_methods_oct2017.png",
+        "figures/main/defense_methods_oct2017.pdf",
+        "figures/main/defense_methods_oct2017.svg"
+      ],
+      "formats": [
+        "fig13_oct_defense_comparison.png",
+        "fig13_oct_defense_comparison.pdf",
+        "fig13_oct_defense_comparison.svg"
+      ]
+    },
+    {
+      "number": 14,
+      "stem": "fig14_interpretation_composite",
+      "caption": "Interpretive visualisations. Grad-CAM illustrates representative attention shifts, while two-dimensional penultimate-layer feature projections are overlaid with surrogate decision regions. Neither component is used to prove quantitative superiority or to claim recovery of the true high-dimensional decision boundary.",
+      "sources": [
+        "figures/gradcam/*/resnet*/sample_000.png",
+        "figures/decision_boundary/*/decision_boundary_standard.png"
+      ],
+      "formats": [
+        "fig14_interpretation_composite.png",
+        "fig14_interpretation_composite.pdf",
+        "fig14_interpretation_composite.svg"
+      ]
+    }
+  ]
+}

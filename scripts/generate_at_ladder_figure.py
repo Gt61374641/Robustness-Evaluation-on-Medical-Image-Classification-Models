@@ -67,32 +67,38 @@ def load_data():
 
 
 def panel_trend(ax, data, idx):
+    """(a) How OFTEN adversarial training converges, by capacity and dataset.
+
+    Robustness-vs-capacity cannot be drawn as a trend here: on more than half the
+    capacities PGD-AT never converged, so there is no robustness to place on the
+    curve. The measurable quantity across all 15 cells is the convergence rate,
+    and it is the finding -- trainability is not monotonic in capacity, and the
+    4-class OCT task is not uniformly the hardest.
+    """
     ladder = data["ladder"]
     params = [data["params_m"][m] for m in ladder]
     for ds in data["datasets"]:
         color = DATASET_COLORS[ds]
-        y = [idx[ds][m]["robust8"] for m in ladder]
-        col = [idx[ds][m]["collapsed"] for m in ladder]
+        nok = [idx[ds][m].get("n_success", 0) for m in ladder]
+        nsd = [idx[ds][m].get("n_seeds", 1) or 1 for m in ladder]
+        rate = [k / n if n else np.nan for k, n in zip(nok, nsd)]
         disp = idx[ds][ladder[0]]["dataset_display"]
-        # continuous line across all points (dashed where it passes through collapse)
-        ax.plot(params, y, color=color, lw=1.6, zorder=2, label=disp)
-        # trained points: filled circle; collapsed points: hollow + x overlay
-        for xp, yp, c in zip(params, y, col):
-            if c:
-                ax.plot(xp, yp, marker="o", ms=6, mfc="white", mec=color,
-                        mew=1.3, zorder=3)
-                ax.plot(xp, yp, marker="x", ms=5, color=COLLAPSE_RED,
+        ax.plot(params, rate, color=color, lw=1.4, zorder=2, label=disp,
+                marker="o", ms=5.5, mfc=color, mec=color)
+        for xp, r, k in zip(params, rate, nok):
+            if k == 0:
+                ax.plot(xp, r, marker="x", ms=5, color=COLLAPSE_RED,
                         mew=1.6, zorder=4)
-            else:
-                ax.plot(xp, yp, marker="o", ms=6, mfc=color, mec=color, zorder=3)
     ax.set_xscale("log")
     ax.set_xticks(params)
     ax.set_xticklabels([f"{p:.0f}" for p in params])
     ax.minorticks_off()
     ax.set_xlabel("Model capacity (parameters, M)")
-    ax.set_ylabel("PGD-8/255 robust accuracy (full)")
-    ax.set_ylim(-0.03, 1.0)
-    ax.axhspan(-0.03, 0.02, color=COLLAPSE_RED, alpha=0.06, zorder=0)
+    ax.set_ylabel("PGD-AT convergence rate (seeds)")
+    ax.set_ylim(-0.06, 1.12)
+    ax.set_yticks([0, 1 / 3, 2 / 3, 1])
+    ax.set_yticklabels(["0/3", "1/3", "2/3", "3/3"])
+    ax.axhspan(-0.06, 0.02, color=COLLAPSE_RED, alpha=0.06, zorder=0)
     ax.legend(loc="upper left", fontsize=6.5)
 
 
@@ -104,19 +110,20 @@ def panel_bars(ax, data, idx):
     x = np.arange(len(ladder))
     for i, ds in enumerate(datasets):
         color = DATASET_COLORS[ds]
-        y = [idx[ds][m]["robust8"] for m in ladder]
-        col = [idx[ds][m]["collapsed"] for m in ladder]
-        std = [idx[ds][m].get("robust8_std", 0.0) or 0.0 for m in ladder]
+        y = [idx[ds][m].get("robust8_success") or 0.0 for m in ladder]
+        nok = [idx[ds][m].get("n_success", 0) for m in ladder]
+        col = [k == 0 for k in nok]
+        std = [idx[ds][m].get("robust8_success_std", 0.0) or 0.0 for m in ladder]
         nsd = [idx[ds][m].get("n_seeds", 1) or 1 for m in ladder]
         offset = (i - (n_groups - 1) / 2) * w
-        for xp, yp, c, sd, ns in zip(x, y, col, std, nsd):
-            # trained -> solid fill; collapsed -> pale hollow bar + red x at base
+        for xp, yp, c, sd, ns, k in zip(x, y, col, std, nsd, nok):
+            # trained -> solid fill; never trained -> pale hollow bar + red x
             ax.bar(xp + offset, yp, width=w,
                    color=color if not c else "white",
                    edgecolor=color, linewidth=0.8,
                    alpha=1.0 if not c else 0.9, zorder=2)
-            # error bar only where we have multi-seed evidence on a trained point
-            if not c and ns > 1 and sd > 0:
+            # spread only where more than one converged run contributed
+            if k > 1 and sd > 0:
                 ax.errorbar(xp + offset, yp, yerr=sd, fmt="none",
                             ecolor="#333333", elinewidth=0.7, capsize=1.8,
                             capthick=0.7, zorder=4)
@@ -124,9 +131,15 @@ def panel_bars(ax, data, idx):
                 ax.plot(xp + offset, 0.022, marker="x", ms=4.5,
                         color=COLLAPSE_RED, mew=1.5, zorder=5,
                         clip_on=False)
+            elif k < ns:
+                # Bar height is conditional on convergence, so a cell that only
+                # trained sometimes must say so or it reads as a reliable result.
+                ax.text(xp + offset, yp + sd + 0.03, f"{k}/{ns}",
+                        ha="center", va="bottom", fontsize=5.2,
+                        color=COLLAPSE_RED, zorder=6)
     ax.set_xticks(x)
     ax.set_xticklabels([DISPLAY[m] for m in ladder], rotation=30, ha="right")
-    ax.set_ylabel("PGD-8/255 robust accuracy (full)")
+    ax.set_ylabel("PGD-8/255 robust accuracy (converged runs)")
     ax.set_ylim(0, 1.0)
     # Manual, clean legend: solid dataset swatches + collapsed marker
     handles = [Line2D([0], [0], marker="s", linestyle="none",
@@ -135,7 +148,7 @@ def panel_bars(ax, data, idx):
                for ds in datasets]
     handles.append(Line2D([0], [0], marker="x", linestyle="none",
                           color=COLLAPSE_RED, mew=1.5, markersize=6,
-                          label="collapsed (trivial classifier)"))
+                          label="never converged (trivial classifier)"))
     ax.legend(handles=handles, loc="upper left", fontsize=6.2)
 
 

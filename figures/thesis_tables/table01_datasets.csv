@@ -1,0 +1,4 @@
+dataset,source,classes,n_classes,train,validation,test,split_note
+Chest X-ray,Kermany paediatric chest X-ray collection (official split),NORMAL; PNEUMONIA,2,4634,514,624,Official train/test; stratified 10% validation carve from train
+Malaria,NIH/NLM malaria cell-image collection,Parasitized; Uninfected,2,20099,2342,5117,Patient-group split; no patient shared across partitions; sizes shown are seed 42 — partition sizes are seed-dependent (seed 43: 19038/2049/6471; seed 44: 20358/2274/4926; 27558 images in total at every seed)
+OCT2017,Kermany OCT2017 collection,CNV; DME; DRUSEN; NORMAL,4,15028,8349,968,Official test; stratified validation carve; fixed 20% train subsample

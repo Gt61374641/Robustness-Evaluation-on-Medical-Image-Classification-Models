@@ -1,7 +1,7 @@
 data/
 results/
 checkpoints/
-figures/
+figures/*
 tmp/
 .pytest_cache/
 .pytest_tmp/
@@ -34,3 +34,25 @@ _archive/
 # Copyrighted reference paper — keep out of the public repo
 *.pdf
 *.npz
+
+# Thesis manuscript, reference papers, and local writing tools — local-only
+thesis/
+paper/
+deliverables/
+reports/
+nature-skills/
+.claude/
+*.docx
+~$*
+.nature-figure-config.json
+论文格式要求.md
+scripts/add_thesis_anchors.py
+scripts/build_thesis_blueprint_docx.py
+scripts/build_thesis_docx.py
+scripts/build_thesis_pdf.py
+scripts/count_thesis_words.py
+
+# Published thesis figures and tables (re-included from figures/*)
+!figures/thesis_main/
+!figures/thesis_tables/
+!figures/thesis_main/*.pdf

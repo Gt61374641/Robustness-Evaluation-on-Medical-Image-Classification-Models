@@ -17,7 +17,7 @@ disclosed.
 | Included | Not included |
 |---|---|
 | `src/` — datasets, models, attacks, defences, metrics | Datasets (public; see download instructions below) |
-| `configs/` — one YAML per dataset × architecture | Model checkpoints (≈ GB scale; available on request) |
+| `configs/` — one YAML per dataset × architecture | Model checkpoints (≈ GB scale; retrainable with the pipeline below) |
 | `scripts/` — training, evaluation, audits, figure generation | The dissertation text itself |
 | `results/` — all per-run JSON outputs (clean, attacks, defences) and run configs | Training/evaluation logs |
 | `figures/thesis_main/` — the 14 dissertation figures (PNG/PDF/SVG) with provenance manifest | |

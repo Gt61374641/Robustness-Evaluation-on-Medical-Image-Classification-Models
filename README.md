@@ -1,7 +1,7 @@
 # Robustness Evaluation on Medical Image Classification Models
 
-Code, per-run experimental outputs, and figures for the dissertation
-*Robustness Evaluation on Medical Image Classification Models* (UCL).
+Code, configurations, per-run experimental outputs, and figures for the
+dissertation *Robustness Evaluation on Medical Image Classification Models*.
 
 The study is a systematic evaluation of adversarial robustness under one fixed
 protocol: three medical imaging datasets (paediatric chest X-ray, thin-blood-smear
@@ -49,12 +49,22 @@ figures/thesis_tables/  Main tables as CSV
 ## Setup
 
 ```bash
-pip install -r requirements.txt              # PyTorch, timm, adversarial-robustness-toolbox, ...
-python scripts/download_data.py              # needs a Kaggle API token at ~/.kaggle/kaggle.json
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+# A Kaggle API token is required at ~/.kaggle/kaggle.json
+python scripts/download_data.py --dataset chest_xray_pneumonia
+python scripts/download_data.py --dataset malaria
+python scripts/download_data.py --dataset oct2017
 ```
 
 Datasets (all public): Kermany paediatric chest X-ray, NIH/NLM malaria cell
 images, and Kermany OCT2017.
+
+For a clean-server installation, a functionality-to-file map, expected outputs,
+GPU checks, and troubleshooting, see [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md).
 
 ## Reproduction pipeline
 
@@ -85,6 +95,10 @@ python scripts/build_thesis_evidence_package.py
 python scripts/run_autoattack_audit.py --datasets chest_xray_pneumonia
 ```
 
+Use `python scripts/<entry-point>.py --help` to inspect all supported options.
+Training and attack evaluation are computationally expensive; rebuilding the
+stored evidence package and dissertation figures is CPU-only.
+
 ## Mapping to the dissertation
 
 - `figures/thesis_main/fig01…fig14` are the figures cited as Figures 1–14;
@@ -95,3 +109,13 @@ python scripts/run_autoattack_audit.py --datasets chest_xray_pneumonia
   minimum over increasing budget) is computed in
   `scripts/build_thesis_evidence_package.py`, which also assigns each defence run
   its optimisation regime (successful / partial / collapsed).
+
+## Reproducibility notes
+
+- The formal experiments use seeds 42, 43, and 44.
+- Each run stores a configuration snapshot and originating git commit under
+  `results/<dataset>/<model>/<experiment>/seed<N>/`.
+- Downloaded data and checkpoints are intentionally excluded from version
+  control. Checkpoints can be regenerated from the included configurations.
+- Do not commit Kaggle credentials, patient data, downloaded datasets, or model
+  checkpoints.

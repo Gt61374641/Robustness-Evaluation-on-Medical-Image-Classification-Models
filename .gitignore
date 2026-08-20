@@ -38,7 +38,14 @@ _archive/
 thesis/
 paper/
 deliverables/
-/reports/
+# reports/ is local-only except for the evidence package. The dissertation cites
+# eight files under reports/thesis_evidence/ by path as the source behind its
+# tables and released per-run values, so those have to exist in the published
+# repository or the citations point at nothing. The contact sheet is an internal
+# QA artefact, is not cited, and is 638 KB, so it stays out.
+/reports/*
+!/reports/thesis_evidence/
+/reports/thesis_evidence/figure_contact_sheet.png
 nature-skills/
 .claude/
 *.docx

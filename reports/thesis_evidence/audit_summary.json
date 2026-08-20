@@ -1,0 +1,9 @@
+{
+  "core_runs_expected": 45,
+  "core_runs_observed": 45,
+  "runs_with_monotonic_adjustment": 8,
+  "adjusted_seed_budget_observations": 10,
+  "largest_raw_pgd_rebound": 0.42992424242424243,
+  "defense_seed_rows": 99,
+  "defense_successful_seed_rows": 72
+}

@@ -453,7 +453,15 @@ def _write_tables(core: pd.DataFrame, defenses: pd.DataFrame) -> None:
                 "train": 20099,
                 "validation": 2342,
                 "test": 5117,
-                "split_note": "Patient-group split; no patient shared across partitions",
+                # The seed-42 sizes alone would misread as fixed. Patients are
+                # assigned by seed and contribute unequal numbers of cells, so
+                # the other two partitions are recorded here as well.
+                "split_note": (
+                    "Patient-group split; no patient shared across partitions; sizes shown "
+                    "are seed 42 — partition sizes are seed-dependent "
+                    "(seed 43: 19038/2049/6471; seed 44: 20358/2274/4926; "
+                    "27558 images in total at every seed)"
+                ),
             },
             {
                 "dataset": "OCT2017",
@@ -544,10 +552,16 @@ def _write_tables(core: pd.DataFrame, defenses: pd.DataFrame) -> None:
 
     readme = """# Thesis main tables
 
-- `table01_datasets.csv`: effective partitions used by the experiments.
-- `table02_protocol.csv`: model, attack, audit, and defence settings.
-- `table03_core_metrics.csv`: three-seed clean and audited robustness summary.
-- `table04_defenses.csv`: all-seed and success-only defence summaries.
+The file number and the dissertation table number are not the same, because
+dissertation Table 4 is the AutoAttack audit and is not rendered here.
+
+| File | Dissertation table | Contents |
+|---|---|---|
+| `table01_datasets.csv` | Table 1 | Effective partitions used by the experiments |
+| `table02_protocol.csv` | Table 2 | Model, attack, audit, and defence settings |
+| `table03_core_metrics.csv` | Table 3 | Three-seed clean and audited robustness summary |
+| `table04_defenses.csv` | Table 5 | All-seed and success-only defence summaries |
+| — | Table 4 | Grouped from `reports/thesis_evidence/autoattack_audit.csv`; see the "AutoAttack audit" section of `analysis_note.md` |
 
 `robust_accuracy_8_255_all_mean` is full adversarial accuracy, so it is directly
 comparable to clean accuracy. `n_success_over_3` and `collapse_status` must always
@@ -555,65 +569,6 @@ be shown beside any success-only value. Critical epsilon is right-censored when
 the audited conditional robust accuracy does not fall to 0.5 by 16/255.
 """
     (OUT_TAB / "README.md").write_text(readme, encoding="utf-8")
-
-
-def _plot_workflow() -> None:
-    """Five-stage schematic of the evaluation pipeline.
-
-    The five stages reuse the document's colour-blind-safe model palette, but only
-    as pale tints. This gives the sequential stages enough visual separation without
-    turning the workflow into a saturated categorical chart. Box positions are
-    computed from the panel width so that nothing sits on the canvas edge.
-    """
-    fig, ax = plt.subplots(figsize=(7.2, 2.15))
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
-
-    titles = ["Datasets", "Models", "Attacks", "Metrics", "Defences"]
-    bodies = [
-        "Chest X-ray\nMalaria\nOCT",
-        "ResNet-18…152\n3 seeds\nChest: +2 families",
-        "FGSM / PGD\n0.1–16 /255\nraw + audited",
-        "Clean metrics\nnAUC / critical ε\nrobust accuracy",
-        "PGD-AT / TRADES\nMART\nPGD-50 × 5\ncollapse retained",
-    ]
-    n = len(titles)
-    left, right, gap = 0.015, 0.985, 0.030
-    w = (right - left - gap * (n - 1)) / n
-    y0, h = 0.30, 0.52
-    INK, MUTED = "#1A1A1A", "#4D4D4D"
-    fills = ["#EAF4FB", "#EEF8FD", "#EAF6F2", "#FFF6E2", "#FBEDE8"]
-    edges = ["#0072B2", "#56B4E9", "#009E73", "#E69F00", "#D55E00"]
-    for i, (title, body) in enumerate(zip(titles, bodies)):
-        x = left + i * (w + gap)
-        ax.add_patch(FancyBboxPatch(
-            (x, y0), w, h,
-            boxstyle="round,pad=0,rounding_size=0.014",
-            linewidth=0.9, edgecolor=edges[i], facecolor=fills[i],
-            mutation_aspect=0.32,
-        ))
-        ax.text(x + w / 2, y0 + h - 0.115, title, ha="center", va="center",
-                weight="bold", fontsize=9.0, color=INK)
-        ax.text(x + w / 2, y0 + h / 2 - 0.10, body, ha="center", va="center",
-                fontsize=6.9, color=MUTED, linespacing=1.42)
-        if i < n - 1:
-            ax.add_patch(FancyArrowPatch(
-                (x + w + 0.004, y0 + h / 2), (x + w + gap - 0.004, y0 + h / 2),
-                arrowstyle="-|>", mutation_scale=8, linewidth=0.9,
-                color="#8A8F94", shrinkA=0, shrinkB=0,
-            ))
-
-    # One centred line, as in the original: split into left- and right-aligned halves
-    # the two halves ran into each other in the middle of the panel.
-    ax.plot([left, right], [0.185, 0.185], color="#DCDEE0", linewidth=0.7)
-    # Sized so the line sits inside the box row: wider, it drags the tight bounding
-    # box out past the diagram and leaves the boxes looking inset.
-    ax.text(0.5, 0.075,
-            "Core inference: dataset × architecture × budget dependence"
-            "    |    Reliability audit: attack strength and training collapse",
-            ha="center", va="center", fontsize=6.6, color=MUTED)
-    _save_figure(fig, "fig02_evaluation_workflow")
 
 
 def _plot_clean(core: pd.DataFrame) -> None:
@@ -950,7 +905,7 @@ def _plot_interpretation_composite() -> None:
 def _captions() -> dict[str, str]:
     return {
         "fig01_dataset_class_overview": "Representative classes from the Chest X-ray, Malaria, and OCT2017 evaluation datasets. This descriptive overview establishes modality and label-space differences and is not used as quantitative evidence.",
-        "fig02_evaluation_workflow": "Unified evaluation workflow. The cross-dataset core comprises three imaging datasets, a five-depth ResNet ladder, matched FGSM/PGD budgets, audited robustness metrics, and three adversarial-training methods. DeiT-S, ConvNeXt-T, and the multi-attack suite are Chest X-ray case studies.",
+        "fig02_evaluation_workflow_unified": "Unified evaluation workflow. The cross-dataset core comprises three imaging datasets, a five-depth ResNet ladder, matched FGSM/PGD budgets, audited robustness metrics, and three adversarial-training methods. DeiT-S, ConvNeXt-T, and the multi-attack suite are Chest X-ray case studies.",
         # Figures are numbered in order of appearance in the dissertation: clean
         # baselines (§4.1) precede the attack landscape (§4.2). The blueprint's
         # register grouped them by topic instead, which numbered the attack
@@ -973,7 +928,7 @@ def _captions() -> dict[str, str]:
 def _write_manifest(reused: list[dict], audit_stats: dict) -> None:
     captions = _captions()
     generated_sources = {
-        "fig02_evaluation_workflow": ["scripts/build_thesis_evidence_package.py"],
+        "fig02_evaluation_workflow_unified": ["figures/thesis_main/fig02_evaluation_workflow_unified.drawio"],
         "fig03_audited_envelope_construction": ["reports/thesis_evidence/audited_envelope_seed.csv"],
         "fig04_clean_performance": ["reports/thesis_evidence/core_model_summary.csv"],
         "fig06_fgsm_robustness_curves": ["reports/thesis_evidence/attack_curve_seed.csv"],
@@ -994,11 +949,16 @@ def _write_manifest(reused: list[dict], audit_stats: dict) -> None:
         source = reused_lookup.get(stem, {}).get("sources", generated_sources.get(stem, []))
         records.append(
             {
-                "number": i,
+                # Thesis Figures 1-2 are reproduced from the literature and sit
+                # outside this package, so the generated figures are numbered 3-16.
+                "number": i + 2,
                 "stem": stem,
                 "caption": captions[stem],
                 "sources": source,
-                "formats": [f"{stem}.png", f"{stem}.pdf", f"{stem}.svg"],
+                "formats": sorted(
+                    p.name for p in OUT_FIG.glob(f"{stem}.*")
+                    if p.suffix in (".drawio", ".png", ".pdf", ".svg")
+                ),
             }
         )
     _write_json(
@@ -1014,6 +974,82 @@ def _write_manifest(reused: list[dict], audit_stats: dict) -> None:
     for rec in records:
         lines.extend([f"## Figure {rec['number']}", "", rec["caption"], ""])
     (OUT_FIG / "figure_legends.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _autoattack_audit_note(defenses: pd.DataFrame) -> list[str]:
+    """Regime-grouped summary of the AutoAttack audit, and its coverage gaps.
+
+    Table 4 of the dissertation is this grouping. It is derived here rather than
+    kept by hand so that the regime labels always come from the same classifier
+    that produced ``defense_summary.csv``: an earlier hand-maintained version of
+    the table split off a "partial" row for Chest X-ray ResNet-50 seed 44, a cell
+    the classifier in fact assigns to collapse on the constant-prediction rule.
+
+    ``pgd50_robust_accuracy_8_255_published`` is recovered by the audit script
+    from the stored defence JSONs. Where no such run exists on disk the field
+    stays empty; it is never inferred from the audit's own subset measurement.
+    """
+    audit_csv = OUT_AUDIT / "autoattack_audit.csv"
+    if not audit_csv.exists():
+        return ["## AutoAttack audit", "", "`autoattack_audit.csv` is not present.", ""]
+    audit = pd.read_csv(audit_csv)
+
+    regime: dict[tuple, str] = {}
+    for _, row in defenses.iterrows():
+        for token in str(row.seed_regimes).split(";"):
+            seed, label = token.split(":")
+            regime[(row.dataset, row.model, row.defense, int(seed[4:]))] = label
+    audit["regime"] = [
+        regime.get((r.dataset, r.model, r.method, r.seed)) for _, r in audit.iterrows()
+    ]
+    ladder = audit[audit.regime.notna()].copy()
+    ladder["reduction"] = (
+        ladder.pgd50_robust_accuracy_8_255_same_subset
+        - ladder.autoattack_robust_accuracy_8_255
+    )
+
+    lines = [
+        "## AutoAttack audit",
+        "",
+        f"Audited cells: {len(audit)} ({len(ladder)} in the defence tables, "
+        f"{len(audit) - len(ladder)} on case-study backbones reported separately).",
+        "",
+        "| Regime | Cells | AutoAttack lower | Largest reduction | Mean RA under AutoAttack |",
+        "|---|---|---|---|---|",
+    ]
+    for label in ["success", "partial", "collapsed"]:
+        group = ladder[ladder.regime == label]
+        if group.empty:
+            continue
+        lower = int(
+            (
+                group.autoattack_robust_accuracy_8_255
+                < group.pgd50_robust_accuracy_8_255_same_subset
+            ).sum()
+        )
+        lines.append(
+            f"| {label} | {len(group)} | {lower} | {group.reduction.max():.3f} | "
+            f"{group.autoattack_robust_accuracy_8_255.mean():.3f} |"
+        )
+
+    unmatched = audit[audit.pgd50_robust_accuracy_8_255_published.isna()]
+    lines.append("")
+    if unmatched.empty:
+        lines.append("Every audited cell has a published PGD-50 figure to compare against.")
+    else:
+        lines.append(
+            f"{len(unmatched)} audited cell(s) carry no published PGD-50 figure. The audit "
+            "script reads that field from `results/<dataset>/<model>/defense_<method>/"
+            "seed<N>/defense_results*.json`; where no such run was ever stored the field is "
+            "left empty rather than filled from the audit's own 256-image subset, which has "
+            "a different denominator. Affected cells:"
+        )
+        for _, row in unmatched.iterrows():
+            lines.append(
+                f"- `{row.dataset}/{row.model}/{row.method}/seed{row.seed}`: "
+                "no stored defence evaluation under the published protocol."
+            )
+    return lines
 
 
 def _write_analysis_note(core: pd.DataFrame, defenses: pd.DataFrame, seed_metrics: pd.DataFrame) -> None:
@@ -1059,6 +1095,12 @@ def _write_analysis_note(core: pd.DataFrame, defenses: pd.DataFrame, seed_metric
             "",
             "Success-only defence means are diagnostic supplements. The primary table retains every seed and reports `n_success/3` and collapse status beside any success-only value.",
             "",
+        ]
+    )
+    lines.extend(_autoattack_audit_note(defenses))
+    lines.extend(
+        [
+            "",
             "## Scope controls",
             "",
             "- Cross-dataset claims use only the complete three-dataset ResNet matrix.",
@@ -1094,7 +1136,10 @@ def main() -> None:
 
     _write_tables(core_summary, defenses)
     reused = _copy_existing_numbered()
-    _plot_workflow()
+    # Figure 4 (workflow) is authored in diagrams.net, not generated here; the
+    # .drawio source and its exports live in figures/thesis_main/.
+    if not (OUT_FIG / "fig02_evaluation_workflow_unified.png").exists():
+        raise FileNotFoundError("fig02_evaluation_workflow_unified.png missing; export it from the .drawio source")
     _plot_clean(core_summary)
     _figure_envelope_construction(core_envelope)
     _plot_curves(core_envelope, "fgsm", "fig06_fgsm_robustness_curves", "Conditional robust accuracy (%)")

@@ -38,6 +38,7 @@ The project is a configuration-driven PyTorch pipeline:
 | Attack evaluation | `scripts/evaluate_robustness.py` | command-line entry point |
 | Adversarial training and defence evaluation | `scripts/evaluate_defense.py` | command-line entry point |
 | AutoAttack audit | `scripts/run_autoattack_audit.py` | command-line entry point |
+| Spectral-energy diagnostic | `scripts/analyze_spectral_energy.py` | command-line entry point |
 | Tables, figures, and audit package | `scripts/build_thesis_evidence_package.py` | command-line entry point |
 
 ## 3. Dependencies
@@ -184,7 +185,24 @@ Each result directory contains JSON outputs and a configuration snapshot. The
 evidence builder writes dissertation-facing artefacts to
 `figures/thesis_main/`, `figures/thesis_tables/`, and
 `reports/thesis_evidence/`. `figures/thesis_main/figure_manifest.json` maps each
-numbered figure to its source files.
+numbered figure to its source files, and records for each one the formats that
+are actually present on disk rather than an assumed PNG/PDF/SVG triple.
+
+One figure is not plotted by the builder. The workflow schematic (dissertation
+Figure 4) is authored in diagrams.net and kept as
+`figures/thesis_main/fig02_evaluation_workflow_unified.drawio` with its `.png`
+and `.svg` exports. To change it, edit the `.drawio` file, re-export both, and
+rerun the builder. The builder raises `FileNotFoundError` if the PNG export is
+missing, so a lost export fails the rebuild instead of quietly dropping the
+figure or reinstating an older plotted version.
+
+`reports/thesis_evidence/analysis_note.md` is regenerated on every build. Its
+"AutoAttack audit" section re-derives the regime grouping used by dissertation
+Table 4 by joining `autoattack_audit.csv` to the per-seed regimes in
+`defense_summary.csv`, and lists any audited cell whose published PGD-50 figure
+could not be located on disk. Keep that section derived rather than hand-edited:
+an earlier hand-maintained version of the table drifted out of step with the
+regime classifier.
 
 ## 9. Reproducibility and safe development
 

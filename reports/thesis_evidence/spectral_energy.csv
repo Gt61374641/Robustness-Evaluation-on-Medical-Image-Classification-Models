@@ -1,0 +1,4 @@
+dataset,n_images,hf_fraction_gt28_mean,hf_fraction_gt28_sd,hf_fraction_gt56_mean,hf_fraction_gt56_sd
+chest_xray_pneumonia,256,0.0155,0.0067,0.0052,0.0023
+malaria,256,0.0239,0.0043,0.0049,0.0013
+oct2017,256,0.0919,0.0465,0.0353,0.0202
